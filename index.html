@@ -236,6 +236,7 @@
         let selectedModel = 'Victoria';
         let selectedProduct = null;
         let selectedScene = '';
+        let scenariosLoaded = false; // Credit protection: ensure loadScenarios runs only once
 
         const productsGrid = document.getElementById('productsGrid');
         const productCount = document.getElementById('productCount');
@@ -262,6 +263,12 @@
 
         // --- Scenarios: load 40 rows from "Scenarios" sheet and group by category ---
         async function loadScenarios() {
+            // Credit protection: ensure this runs ONLY ONCE on load
+            if (scenariosLoaded) {
+                console.log('loadScenarios: Already loaded, skipping to prevent duplicate calls.');
+                return;
+            }
+
             if (!WEBHOOK_SCENARIOS) {
                 console.warn('WEBHOOK_SCENARIOS endpoint is not configured.');
                 return;
@@ -273,7 +280,6 @@
 
                 let data;
                 try {
-                    // Expect Make to return the "1.values" style payload: an array of arrays
                     data = await res.json();
                 } catch (parseErr) {
                     console.error('Scenarios webhook did not return valid JSON:', parseErr);
@@ -283,9 +289,18 @@
 
                 console.log('RAW_FROM_MAKE:', data);
 
-                if (!Array.isArray(data)) {
-                    console.error('Unexpected scenarios payload (expected top-level array of rows). Received:', data);
-                    showStatus(statusBar, '✗ Scenarios: expected an array of rows', 'error');
+                // Handle new JSON structure: {"scenes": [array]}
+                let scenariosArray;
+                if (data && typeof data === 'object' && 'scenes' in data && Array.isArray(data.scenes)) {
+                    scenariosArray = data.scenes;
+                    console.log('Parsed new structure: found scenes array with', scenariosArray.length, 'items');
+                } else if (Array.isArray(data)) {
+                    // Fallback: support old structure (direct array)
+                    scenariosArray = data;
+                    console.log('Using legacy structure: direct array with', scenariosArray.length, 'items');
+                } else {
+                    console.error('Unexpected scenarios payload. Expected {"scenes": [...]} or [...]. Received:', data);
+                    showStatus(statusBar, '✗ Scenarios: unexpected data structure', 'error');
                     return;
                 }
 
@@ -294,8 +309,8 @@
 
                 let rowsProcessed = 0;
 
-                // data is expected as: [ [SceneName (A), p1 (B), p2 (C), p3 (D), p4 (E), Category (F), ...], ... ]
-                data.forEach((row, idx) => {
+                // scenariosArray is expected as: [ [SceneName (A), p1 (B), p2 (C), p3 (D), p4 (E), Category (F), ...], ... ]
+                scenariosArray.forEach((row, idx) => {
                     if (!Array.isArray(row)) return;
 
                     // Column A: Scene Name (index 0)
@@ -362,6 +377,9 @@
                     statusBar.textContent = '';
                     statusBar.className = 'status-bar';
                 }
+
+                // Mark as loaded to prevent duplicate calls
+                scenariosLoaded = true;
 
                 // Force-refresh dropdown menus using the currently active category (if any)
                 const activeCatBtn = document.querySelector('.scene-cat-btn.active');
@@ -492,7 +510,8 @@
 
         function startStatusPolling() {
             fetchDashboardStatus();
-            setInterval(fetchDashboardStatus, 5000);
+            // Credit protection: poll Cell J5 status every 25 seconds (instead of 5)
+            setInterval(fetchDashboardStatus, 25000);
         }
 
         async function generateImage() {
@@ -542,6 +561,7 @@
             };
 
             try {
+                console.log('Request sent'); // Log to console when webhook is triggered
                 const res = await fetch(WEBHOOK_IMAGE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
