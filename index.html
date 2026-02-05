@@ -298,8 +298,10 @@
                 if (data && typeof data === 'object' && 'scenes' in data && Array.isArray(data.scenes)) {
                     scenariosArray = data.scenes;
                     console.log('Parsed new structure: found scenes array with', scenariosArray.length, 'items');
+                    if (scenariosArray.length > 0 && typeof scenariosArray[0] === 'object' && !Array.isArray(scenariosArray[0])) {
+                        console.log('Sample row keys:', Object.keys(scenariosArray[0]));
+                    }
                 } else if (Array.isArray(data)) {
-                    // Fallback: support old structure (direct array)
                     scenariosArray = data;
                     console.log('Using legacy structure: direct array with', scenariosArray.length, 'items');
                 } else {
@@ -314,12 +316,30 @@
                 let rowsProcessed = 0;
                 const allScenes = [];
 
-                // Data from Make: array of objects. Use exact keys: Vibe (A), Category (F)
-                scenariosArray.forEach((item, idx) => {
-                    if (!item || typeof item !== 'object') return;
+                // Flexible: get scene name from Vibe (A), vibe, Vibe, or first field
+                function getSceneName(item) {
+                    if (Array.isArray(item)) return (item[0] != null ? String(item[0]).trim() : '');
+                    if (!item || typeof item !== 'object') return '';
+                    const v = item['Vibe (A)'] ?? item['vibe'] ?? item['Vibe'];
+                    if (v != null && String(v).trim()) return String(v).trim();
+                    const vals = Object.values(item);
+                    return (vals[0] != null ? String(vals[0]).trim() : '');
+                }
+                // Flexible: get category from Category (F), category, Category, or sixth field
+                function getCategory(item) {
+                    if (Array.isArray(item)) return (item[5] != null ? String(item[5]).trim() : '');
+                    if (!item || typeof item !== 'object') return '';
+                    const v = item['Category (F)'] ?? item['category'] ?? item['Category'];
+                    if (v != null && String(v).trim()) return String(v).trim();
+                    const vals = Object.values(item);
+                    return (vals[5] != null ? String(vals[5]).trim() : '');
+                }
 
-                    const sceneStr = (item['Vibe (A)'] != null ? String(item['Vibe (A)']).trim() : '');
-                    const catStr = (item['Category (F)'] != null ? String(item['Category (F)']).trim() : '');
+                scenariosArray.forEach((item, idx) => {
+                    if (!item) return;
+
+                    const sceneStr = getSceneName(item);
+                    const catStr = getCategory(item);
 
                     // Skip header row if present
                     const lowerScene = sceneStr.toLowerCase();
@@ -339,8 +359,9 @@
                     if (!sceneStr) return;
                     if (!catStr) return;
 
+                    // Match category flexibly (exact or case-insensitive)
                     const catKey = Object.keys(SCENARIO_CATEGORIES)
-                        .find(key => SCENARIO_CATEGORIES[key] === catStr);
+                        .find(key => SCENARIO_CATEGORIES[key] === catStr || SCENARIO_CATEGORIES[key].toLowerCase() === catStr.toLowerCase());
                     if (!catKey) {
                         console.warn('Scenarios: unknown category at row', idx, catStr, item);
                         return;
