@@ -71,7 +71,7 @@
 
         .copywriter-layout { padding:20px; max-width:800px; margin:0 auto; }
         .result-frame { background:var(--black-card); border-radius:12px; border:1px solid rgba(212,175,55,0.2); overflow:hidden; margin-bottom:20px; }
-        .result-placeholder { width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#111; color:var(--grey); flex-direction:column; gap:10px; }
+        .result-placeholder { position:relative; width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#111; color:var(--grey); flex-direction:column; gap:10px; }
         .shimmer { background:linear-gradient(90deg,#111 25%,#222 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; }
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         .result-actions { padding:15px; display:flex; gap:10px; flex-wrap:wrap; }
@@ -183,7 +183,7 @@
                         <span id="imagePlaceholder">Generate an image in Step 1</span>
                     </div>
                     <div class="result-actions">
-                        <button class="action-btn btn-caption" id="captionBtn" disabled>📝 Generate Marketing Post</button>
+                        <button type="button" class="action-btn btn-caption" id="captionBtn" disabled>📝 Generate Marketing Post</button>
                         <button class="action-btn btn-telegram" id="telegramBtn" disabled>🚀 Send to Telegram</button>
                         <button class="action-btn btn-instagram" disabled>📸 Instagram (Soon)</button>
                     </div>
@@ -478,7 +478,9 @@
 
             sceneSelect.addEventListener('change', () => { selectedScene = sceneSelect.value; updateGenerateBtn(); });
             generateBtn.addEventListener('click', generateImage);
-            captionBtn.addEventListener('click', generateCaption);
+            if (captionBtn) {
+                captionBtn.addEventListener('click', function(e) { e.preventDefault(); generateCaption(); });
+            }
             telegramBtn.addEventListener('click', sendToTelegram);
             document.getElementById('finalTelegram').addEventListener('click', sendToTelegram);
         }
@@ -532,12 +534,18 @@
 
         function startStatusPolling() {
             fetchDashboardStatus();
-            // Credit protection: poll Cell J5 status every 25 seconds (instead of 5)
+            // Credit protection: all status checks (e.g. Dashboard J5) run every 25 seconds only
             setInterval(fetchDashboardStatus, 25000);
         }
 
         async function generateImage() {
             if (!selectedProduct) return;
+            // Auto-tab switch: go to Copywriter (Step 2) immediately on click to show progress/result
+            document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+            document.querySelector('[data-step="2"]').classList.add('active');
+            document.getElementById('step2').classList.add('active');
+
             showStatus(statusBar, '⚙️ Generating image...');
             generateBtn.disabled = true;
 
@@ -604,41 +612,36 @@
                         console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     }
 
-                    if (data && data.imageUrl) {
-                        // Display live image
-                        const url = data.imageUrl;
+                    // Extract image URL from Make response (multiple possible keys)
+                    const url = (data && (data.imageUrl || data.image_url || data.url ||
+                        (data.output && (data.output.url || data.output.imageUrl || data.output.image_url))));
+                    if (url && typeof url === 'string') {
+                        console.log('Image URL received:', url);
                         if (resultImageEl) {
                             resultImageEl.classList.remove('shimmer');
                             if (imageSpinner) imageSpinner.style.display = 'none';
-                            if (imagePlaceholder) imagePlaceholder.style.display = 'none';
-
+                            if (imagePlaceholder) {
+                                imagePlaceholder.style.display = 'none';
+                            }
                             let img = document.getElementById('generatedImage');
                             if (!img) {
                                 img = document.createElement('img');
                                 img.id = 'generatedImage';
-                                img.style.width = '100%';
-                                img.style.height = '100%';
-                                img.style.objectFit = 'cover';
+                                img.alt = 'Generated image';
+                                img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
+                                resultImageEl.style.position = 'relative';
                                 resultImageEl.appendChild(img);
                             }
                             img.src = url;
+                            img.style.display = 'block';
                         }
-
                         showStatus(statusBar, '✓ Image generated successfully', 'success');
                         captionBtn.disabled = false;
                         telegramBtn.disabled = false;
                         document.getElementById('finalTelegram').disabled = false;
                     } else {
-                        // Fallback: request accepted but result not returned synchronously
                         showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
                     }
-
-                    setTimeout(() => {
-                        document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
-                        document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
-                        document.querySelector('[data-step="2"]').classList.add('active');
-                        document.getElementById('step2').classList.add('active');
-                    }, 1500);
                 }
             } catch (err) {
                 showStatus(statusBar, '✗ Network error: ' + err.message, 'error');
@@ -653,10 +656,9 @@
             showStatus(status, '📝 Generating marketing text...');
             captionBtn.disabled = true;
 
-            // Format scene as 'Category - Scene Name' instead of comma-separated
-            const formattedScene = selectedScene.includes(',') 
-                ? selectedScene.replace(',', ' - ') 
-                : selectedScene;
+            // Format scene (Product Data + Prompt) for caption webhook
+            const sceneRaw = selectedScene || '';
+            const formattedScene = sceneRaw.includes(',') ? sceneRaw.replace(',', ' - ') : sceneRaw;
 
             // Ensure Alma's reference image URL is correct
             let modelUrl = selectedProduct.modelUrl;
@@ -680,12 +682,14 @@
                 collection: selectedProduct.collection,
                 model_url: fixedUrl,
                 scene: formattedScene,
-                situation: formattedScene, // Add situation field with formatted value
+                situation: formattedScene,
                 model_prompt: modelPrompt,
+                prompt: formattedScene,
                 command: 'Generate Caption'
             };
 
             try {
+                console.log('Caption request sent to', WEBHOOK_CAPTION, { product: selectedProduct.title, scene: formattedScene });
                 const res = await fetch(WEBHOOK_CAPTION, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
