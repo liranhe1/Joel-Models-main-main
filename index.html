@@ -261,11 +261,11 @@
             startStatusPolling();
         }
 
-        // --- Scenarios: load 40 rows from "Scenarios" sheet and group by category ---
+        // --- Scenarios: load from "Scenarios" sheet and group by category ---
+        // One-time run: fetchScenarios runs ONLY ONCE on load to prevent burning credits.
         async function loadScenarios() {
-            // Credit protection: ensure this runs ONLY ONCE on load
             if (scenariosLoaded) {
-                console.log('loadScenarios: Already loaded, skipping to prevent duplicate calls.');
+                console.log('loadScenarios: Already loaded, skipping (one-time run).');
                 return;
             }
 
@@ -308,20 +308,16 @@
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
 
                 let rowsProcessed = 0;
+                const allScenes = [];
 
-                // scenariosArray is expected as: [ [SceneName (A), p1 (B), p2 (C), p3 (D), p4 (E), Category (F), ...], ... ]
-                scenariosArray.forEach((row, idx) => {
-                    if (!Array.isArray(row)) return;
+                // Data from Make: array of objects. Use exact keys: Vibe (A), Category (F)
+                scenariosArray.forEach((item, idx) => {
+                    if (!item || typeof item !== 'object') return;
 
-                    // Column A: Scene Name (index 0)
-                    const sceneNameRaw = row[0];
-                    // Column F: Category (index 5)
-                    const categoryRaw = row[5];
+                    const sceneStr = (item['Vibe (A)'] != null ? String(item['Vibe (A)']).trim() : '');
+                    const catStr = (item['Category (F)'] != null ? String(item['Category (F)']).trim() : '');
 
-                    const sceneStr = sceneNameRaw != null ? String(sceneNameRaw).trim() : '';
-                    const catStr = categoryRaw != null ? String(categoryRaw).trim() : '';
-
-                    // Skip header row if present (e.g. "Vibe", "Category")
+                    // Skip header row if present
                     const lowerScene = sceneStr.toLowerCase();
                     const lowerCat = catStr.toLowerCase();
                     if (
@@ -336,38 +332,25 @@
                         return;
                     }
 
-                    if (!sceneStr) {
-                        alert('Scenarios mapping error: missing Scene Name (Column A) in row ' + (idx + 1));
-                        console.error('Missing Scene Name at row', idx, row);
-                        return;
-                    }
-                    if (!catStr) {
-                        alert('Scenarios mapping error: missing Category (Column F) in row ' + (idx + 1));
-                        console.error('Missing Category at row', idx, row);
-                        return;
-                    }
+                    if (!sceneStr) return;
+                    if (!catStr) return;
 
                     const catKey = Object.keys(SCENARIO_CATEGORIES)
                         .find(key => SCENARIO_CATEGORIES[key] === catStr);
                     if (!catKey) {
-                        console.warn('Scenarios: unknown category at row', idx, catStr, row);
+                        console.warn('Scenarios: unknown category at row', idx, catStr, item);
                         return;
                     }
 
-                    // Columns B–E: prompt parts (indices 1–4)
-                    const promptParts = row.slice(1, 5)
-                        .filter(Boolean)
-                        .map(p => String(p).trim());
-                    const prompt = promptParts.join(' | ');
-
-                    const value = prompt ? `${sceneStr},${prompt}` : sceneStr;
-                    const label = prompt ? `${sceneStr} - ${prompt}` : sceneStr;
+                    const value = sceneStr;
+                    const label = sceneStr;
 
                     scenariosByCategory[catKey].push({ value, label });
+                    allScenes.push({ name: sceneStr, category: catStr, value, label });
                     rowsProcessed++;
                 });
 
-                // Helpful debug log to inspect the final structure used by the UI
+                console.log('Processed Scenes:', allScenes);
                 console.log('Final Data Structure:', scenariosByCategory);
 
                 if (!rowsProcessed) {
@@ -475,7 +458,12 @@
             document.getElementById('finalTelegram').addEventListener('click', sendToTelegram);
         }
 
-        function updateGenerateBtn() { generateBtn.disabled = !selectedProduct || !selectedScene; }
+        // Emergency UI unlock: enable Generate even when no scenes loaded (for sync testing)
+        function updateGenerateBtn() {
+            const hasAnyScenes = Object.values(scenariosByCategory).some(arr => arr.length > 0);
+            const needScene = hasAnyScenes ? !!selectedScene : false;
+            generateBtn.disabled = !selectedProduct || needScene;
+        }
 
         function showStatus(el, msg, type = '') {
             el.textContent = msg;
@@ -515,7 +503,7 @@
         }
 
         async function generateImage() {
-            if (!selectedProduct || !selectedScene) return;
+            if (!selectedProduct) return;
             showStatus(statusBar, '⚙️ Generating image...');
             generateBtn.disabled = true;
 
@@ -527,10 +515,10 @@
             }
             if (resultImageEl) resultImageEl.classList.add('shimmer');
 
-            // Format scene as 'Category - Scene Name' instead of comma-separated
-            const formattedScene = selectedScene.includes(',') 
-                ? selectedScene.replace(',', ' - ') 
-                : selectedScene;
+            // Format scene (allow empty when no scenes loaded - emergency unlock for testing)
+            const formattedScene = (selectedScene || '').includes(',')
+                ? (selectedScene || '').replace(',', ' - ')
+                : (selectedScene || '');
 
             // Ensure Alma's reference image URL is correct
             let modelUrl = selectedProduct.modelUrl;
