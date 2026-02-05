@@ -271,18 +271,33 @@
                 const res = await fetch(WEBHOOK_SCENARIOS);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                const data = await res.json();
-                if (!Array.isArray(data)) throw new Error('Unexpected scenarios payload (expected top-level array).');
+                // Explicitly expect a JSON array; handle non‑JSON or wrong shape gracefully
+                const rawText = await res.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    console.error('Scenarios webhook did not return valid JSON. Raw response:', rawText);
+                    return; // Do not break UI – just skip populating scenarios
+                }
+
+                if (!Array.isArray(data)) {
+                    console.error('Unexpected scenarios payload (expected top-level array of rows). Received:', data);
+                    return;
+                }
 
                 // Reset groups
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
 
-                // data is expected as: [ [SceneName, p1, p2, p3, p4, Category, ...], ... ]
+                // data is expected as: [ [SceneName (A), p1 (B), p2 (C), p3 (D), p4 (E), Category (F), ...], ... ]
                 data.forEach((row, idx) => {
                     if (!Array.isArray(row)) return;
 
+                    // Column A: Scene Name (index 0)
                     const sceneNameRaw = row[0];
+                    // Columns B–E: prompt parts (indices 1–4)
                     const promptParts = row.slice(1, 5).filter(Boolean);
+                    // Column F: Category (index 5)
                     const categoryRaw = row[5];
 
                     if (!sceneNameRaw || !categoryRaw) return;
