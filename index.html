@@ -273,6 +273,15 @@
 
                 // Explicitly expect a JSON array; handle non‑JSON or wrong shape gracefully
                 const rawText = await res.text();
+
+                // Some Make webhooks may immediately respond with a plain string like "Accepted".
+                // In that case, log a warning and do not attempt to parse as JSON.
+                const trimmed = rawText.trim();
+                if (trimmed === 'Accepted' || trimmed.startsWith('Accepted')) {
+                    console.warn('Scenarios webhook responded with a non-JSON status string:', trimmed);
+                    return; // Do not break UI – just skip populating scenarios
+                }
+
                 let data;
                 try {
                     data = JSON.parse(rawText);
@@ -331,7 +340,8 @@
                     scenariosByCategory[catKey].push({ value, label });
                 });
 
-                console.log('Scenarios loaded and grouped:', scenariosByCategory);
+                // Helpful debug log to inspect the final structure used by the UI
+                console.log('Final Data Structure:', scenariosByCategory);
 
                 // Clear any previous error message once data is successfully loaded
                 if (statusBar) {
@@ -439,8 +449,15 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
                 const data = await res.json();
-                // Expect backend to return the content of Dashboard!A2 in one of these fields
-                const text = data.status || data.value || data.statusText || data.A2 || '';
+                // Expect backend to return the content of Dashboard!J5 (primary) or fall back to other fields
+                const text =
+                    data.J5 ||
+                    data.j5 ||
+                    data.status ||
+                    data.value ||
+                    data.statusText ||
+                    data.A2 ||
+                    '';
                 if (!text) return;
 
                 globalStatusBar.textContent = text;
