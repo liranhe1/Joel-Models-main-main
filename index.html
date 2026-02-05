@@ -272,29 +272,57 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
                 const data = await res.json();
-                if (!Array.isArray(data)) throw new Error('Unexpected scenarios payload (expected array).');
+                if (!Array.isArray(data)) throw new Error('Unexpected scenarios payload (expected top-level array).');
 
                 // Reset groups
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
 
-                data.forEach(row => {
-                    // Support multiple possible field names so the backend has flexibility
-                    const categoryName = row.category || row.Category || row.cat || '';
-                    const sceneName = row.sceneName || row.SceneName || row.name || row.Name || '';
-                    const location = row.location || row.Location || row.description || row.Description || '';
+                // data is expected as: [ [SceneName, p1, p2, p3, p4, Category, ...], ... ]
+                data.forEach((row, idx) => {
+                    if (!Array.isArray(row)) return;
 
-                    if (!categoryName || !sceneName) return;
+                    const sceneNameRaw = row[0];
+                    const promptParts = row.slice(1, 5).filter(Boolean);
+                    const categoryRaw = row[5];
+
+                    if (!sceneNameRaw || !categoryRaw) return;
+
+                    const sceneName = String(sceneNameRaw).trim();
+                    const categoryName = String(categoryRaw).trim();
+
+                    // Skip header row if present (e.g. "Scene Name", "Category")
+                    const lowerScene = sceneName.toLowerCase();
+                    const lowerCat = categoryName.toLowerCase();
+                    if (
+                        idx === 0 &&
+                        (
+                            lowerScene.includes('scene') ||
+                            lowerScene.includes('name') ||
+                            lowerCat.includes('category')
+                        )
+                    ) {
+                        return;
+                    }
 
                     const catKey = Object.keys(SCENARIO_CATEGORIES)
                         .find(key => SCENARIO_CATEGORIES[key] === categoryName);
                     if (!catKey) return;
 
-                    const value = location ? `${sceneName},${location}` : sceneName;
-                    const label = location ? `${sceneName} - ${location}` : sceneName;
+                    const prompt = promptParts.map(p => String(p).trim()).join(' | ');
+
+                    const value = prompt ? `${sceneName},${prompt}` : sceneName;
+                    const label = prompt ? `${sceneName} - ${prompt}` : sceneName;
+
                     scenariosByCategory[catKey].push({ value, label });
                 });
 
-                console.log(`Loaded ${data.length} scenarios from backend.`);
+                console.log('Scenarios loaded and grouped:', scenariosByCategory);
+
+                // Clear any previous error message once data is successfully loaded
+                if (statusBar) {
+                    statusBar.textContent = '';
+                    statusBar.className = 'status-bar';
+                }
             } catch (err) {
                 console.error('Failed to load scenarios', err);
                 showStatus(statusBar, '✗ Error loading scenarios', 'error');
