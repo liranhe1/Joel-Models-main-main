@@ -271,32 +271,28 @@
                 const res = await fetch(WEBHOOK_SCENARIOS);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                // Explicitly expect a JSON array; handle non‑JSON or wrong shape gracefully
-                const rawText = await res.text();
-
-                // Some Make webhooks may immediately respond with a plain string like "Accepted".
-                // In that case, log a warning and do not attempt to parse as JSON.
-                const trimmed = rawText.trim();
-                if (trimmed === 'Accepted' || trimmed.startsWith('Accepted')) {
-                    console.warn('Scenarios webhook responded with a non-JSON status string:', trimmed);
-                    return; // Do not break UI – just skip populating scenarios
-                }
-
                 let data;
                 try {
-                    data = JSON.parse(rawText);
+                    // Expect Make to return the "1.values" style payload: an array of arrays
+                    data = await res.json();
                 } catch (parseErr) {
-                    console.error('Scenarios webhook did not return valid JSON. Raw response:', rawText);
-                    return; // Do not break UI – just skip populating scenarios
+                    console.error('Scenarios webhook did not return valid JSON:', parseErr);
+                    showStatus(statusBar, '✗ Scenarios: response is not valid JSON', 'error');
+                    return;
                 }
+
+                console.log('RAW_FROM_MAKE:', data);
 
                 if (!Array.isArray(data)) {
                     console.error('Unexpected scenarios payload (expected top-level array of rows). Received:', data);
+                    showStatus(statusBar, '✗ Scenarios: expected an array of rows', 'error');
                     return;
                 }
 
                 // Reset groups
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
+
+                let rowsProcessed = 0;
 
                 // data is expected as: [ [SceneName (A), p1 (B), p2 (C), p3 (D), p4 (E), Category (F), ...], ... ]
                 data.forEach((row, idx) => {
@@ -304,22 +300,19 @@
 
                     // Column A: Scene Name (index 0)
                     const sceneNameRaw = row[0];
-                    // Columns B–E: prompt parts (indices 1–4)
-                    const promptParts = row.slice(1, 5).filter(Boolean);
                     // Column F: Category (index 5)
                     const categoryRaw = row[5];
 
-                    if (!sceneNameRaw || !categoryRaw) return;
+                    const sceneStr = sceneNameRaw != null ? String(sceneNameRaw).trim() : '';
+                    const catStr = categoryRaw != null ? String(categoryRaw).trim() : '';
 
-                    const sceneName = String(sceneNameRaw).trim();
-                    const categoryName = String(categoryRaw).trim();
-
-                    // Skip header row if present (e.g. "Scene Name", "Category")
-                    const lowerScene = sceneName.toLowerCase();
-                    const lowerCat = categoryName.toLowerCase();
+                    // Skip header row if present (e.g. "Vibe", "Category")
+                    const lowerScene = sceneStr.toLowerCase();
+                    const lowerCat = catStr.toLowerCase();
                     if (
                         idx === 0 &&
                         (
+                            lowerScene.includes('vibe') ||
                             lowerScene.includes('scene') ||
                             lowerScene.includes('name') ||
                             lowerCat.includes('category')
@@ -328,25 +321,55 @@
                         return;
                     }
 
+                    if (!sceneStr) {
+                        alert('Scenarios mapping error: missing Scene Name (Column A) in row ' + (idx + 1));
+                        console.error('Missing Scene Name at row', idx, row);
+                        return;
+                    }
+                    if (!catStr) {
+                        alert('Scenarios mapping error: missing Category (Column F) in row ' + (idx + 1));
+                        console.error('Missing Category at row', idx, row);
+                        return;
+                    }
+
                     const catKey = Object.keys(SCENARIO_CATEGORIES)
-                        .find(key => SCENARIO_CATEGORIES[key] === categoryName);
-                    if (!catKey) return;
+                        .find(key => SCENARIO_CATEGORIES[key] === catStr);
+                    if (!catKey) {
+                        console.warn('Scenarios: unknown category at row', idx, catStr, row);
+                        return;
+                    }
 
-                    const prompt = promptParts.map(p => String(p).trim()).join(' | ');
+                    // Columns B–E: prompt parts (indices 1–4)
+                    const promptParts = row.slice(1, 5)
+                        .filter(Boolean)
+                        .map(p => String(p).trim());
+                    const prompt = promptParts.join(' | ');
 
-                    const value = prompt ? `${sceneName},${prompt}` : sceneName;
-                    const label = prompt ? `${sceneName} - ${prompt}` : sceneName;
+                    const value = prompt ? `${sceneStr},${prompt}` : sceneStr;
+                    const label = prompt ? `${sceneStr} - ${prompt}` : sceneStr;
 
                     scenariosByCategory[catKey].push({ value, label });
+                    rowsProcessed++;
                 });
 
                 // Helpful debug log to inspect the final structure used by the UI
                 console.log('Final Data Structure:', scenariosByCategory);
 
-                // Clear any previous error message once data is successfully loaded
-                if (statusBar) {
+                if (!rowsProcessed) {
+                    showStatus(statusBar, '✗ Scenarios: no valid rows after mapping', 'error');
+                } else if (statusBar) {
+                    // Clear any previous error message once data is successfully loaded
                     statusBar.textContent = '';
                     statusBar.className = 'status-bar';
+                }
+
+                // Force-refresh dropdown menus using the currently active category (if any)
+                const activeCatBtn = document.querySelector('.scene-cat-btn.active');
+                if (activeCatBtn) {
+                    activeCatBtn.click();
+                } else {
+                    sceneSelect.disabled = true;
+                    sceneSelect.innerHTML = '<option value="">Select category first...</option>';
                 }
             } catch (err) {
                 console.error('Failed to load scenarios', err);
