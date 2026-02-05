@@ -279,10 +279,14 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
                 let data;
+                let rawText;
                 try {
-                    data = await res.json();
+                    rawText = await res.text();
+                    console.log('RAW_TEXT_FROM_SCENARIOS_WEBHOOK:', rawText);
+                    data = JSON.parse(rawText);
                 } catch (parseErr) {
                     console.error('Scenarios webhook did not return valid JSON:', parseErr);
+                    console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     showStatus(statusBar, '✗ Scenarios: response is not valid JSON', 'error');
                     return;
                 }
@@ -477,7 +481,16 @@
                 const res = await fetch(WEBHOOK_STATUS);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                const data = await res.json();
+                let data;
+                let rawText;
+                try {
+                    rawText = await res.text();
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    console.error('Status webhook did not return valid JSON:', parseErr);
+                    console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
+                    return;
+                }
                 // Expect backend to return the content of Dashboard!J5 (primary) or fall back to other fields
                 const text =
                     data.J5 ||
@@ -560,10 +573,14 @@
                     showStatus(statusBar, '✗ Error sending image request', 'error');
                 } else {
                     let data = null;
+                    let rawText;
                     try {
-                        data = await res.json();
+                        rawText = await res.text();
+                        console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
+                        data = JSON.parse(rawText);
                     } catch (e) {
                         console.warn('Image webhook did not return JSON or parsing failed.', e);
+                        console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     }
 
                     if (data && data.imageUrl) {
@@ -658,10 +675,14 @@
                     showStatus(status, '✗ Error generating caption', 'error');
                 } else {
                     let data = null;
+                    let rawText;
                     try {
-                        data = await res.json();
+                        rawText = await res.text();
+                        console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
+                        data = JSON.parse(rawText);
                     } catch (e) {
                         console.warn('Caption webhook did not return JSON or parsing failed.', e);
+                        console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     }
 
                     captionBox.style.display = 'block';
