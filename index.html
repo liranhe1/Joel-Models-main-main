@@ -119,6 +119,7 @@
             <button class="step-btn" data-step="2">2. Copywriter</button>
             <button class="step-btn" data-step="3">3. Distribution</button>
         </nav>
+        <div class="status-bar" id="globalStatus"></div>
 
         <section class="step-panel active" id="step1">
             <div class="studio-layout">
@@ -137,10 +138,10 @@
                     <div class="dash-section">
                         <span class="dash-label">Scene Category</span>
                         <div class="scene-categories" id="sceneCategories">
-                            <button class="scene-cat-btn" data-cat="lifestyle">Lifestyle</button>
-                            <button class="scene-cat-btn" data-cat="evening">Evening</button>
-                            <button class="scene-cat-btn" data-cat="urban">Urban</button>
-                            <button class="scene-cat-btn" data-cat="artistic">Artistic</button>
+                            <button class="scene-cat-btn" data-cat="daylight-urban">Daylight Urban</button>
+                            <button class="scene-cat-btn" data-cat="glamour-night">Glamour Night</button>
+                            <button class="scene-cat-btn" data-cat="luxury-vacation">Luxury Vacation</button>
+                            <button class="scene-cat-btn" data-cat="quiet-luxury">Quiet Luxury</button>
                         </div>
                         <select id="sceneSelect" disabled><option value="">Select category first...</option></select>
                     </div>
@@ -213,30 +214,23 @@
     <script>
         const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
         const WEBHOOK_CAPTION = 'https://hook.eu2.make.com/rseu4bjldsj15cm12wx0otg620ahrv67';
+        // TODO: replace these with your real webhooks/endpoints
+        // that read from the "Scenarios" and "Dashboard" sheets.
+        const WEBHOOK_SCENARIOS = ''; // e.g. 'https://hook.eu2.make.com/your-scenarios-webhook'
+        const WEBHOOK_STATUS = '';    // e.g. 'https://hook.eu2.make.com/your-dashboard-status-webhook'
 
-        const SCENES = {
-            lifestyle: [
-                { value: 'Morning Espresso,בית קפה מעוצב בנווה צדק', label: 'Morning Espresso - בית קפה מעוצב' },
-                { value: 'Shopping Day,קניון רמת אביב / כיכר המדינה', label: 'Shopping Day - קניון יוקרתי' },
-                { value: 'Friday Vibe,סיבוב בשוק הפשפשים/יפו', label: 'Friday Vibe - שוק הפשפשים' },
-                { value: 'Cozy Winter,קירות עץ חשופים, שטיח פרווה.', label: 'Cozy Winter - אווירה חמימה' }
-            ],
-            evening: [
-                { value: 'Fine Dining,מסעדת שף יוקרתית (לילה)', label: 'Fine Dining - מסעדת שף' },
-                { value: 'Evening Event,השקת מותג / אירוע נוצץ', label: 'Evening Event - אירוע יוקרתי' },
-                { value: 'Business Lounge,מלון יוקרה בתל אביב', label: 'Business Lounge - מלון יוקרה' }
-            ],
-            urban: [
-                { value: 'High-Tech Chic,לובי של מגדל משרדים בתל אביב', label: 'High-Tech Chic - מגדל משרדים' },
-                { value: 'Gallery Visit,גלריית אמנות מודרנית', label: 'Gallery Visit - גלריית אמנות' },
-                { value: 'Parisian Chic,בית קפה אירופאי קלאסי', label: 'Parisian Chic - סגנון פריזאי' }
-            ],
-            artistic: [
-                { value: 'Artistic Rooftop,סטודיו על גג בדרום העיר', label: 'Artistic Rooftop - סטודיו על גג' },
-                { value: 'Rainy Night Noir,תחת פנס רחוב בלילה גשום.', label: 'Rainy Night - לילה גשום' },
-                { value: 'Golden Jewelry Focus,קלוז-אפ ברכב יוקרה', label: 'Golden Focus - רכב יוקרה' },
-                { value: 'Urban Luxury / Night,רחוב רטוב עם אורות ניאון', label: 'Urban Luxury - אורות ניאון' }
-            ]
+        const SCENARIO_CATEGORIES = {
+            'daylight-urban': 'Daylight Urban',
+            'glamour-night': 'Glamour Night',
+            'luxury-vacation': 'Luxury Vacation',
+            'quiet-luxury': 'Quiet Luxury'
+        };
+
+        const scenariosByCategory = {
+            'daylight-urban': [],
+            'glamour-night': [],
+            'luxury-vacation': [],
+            'quiet-luxury': []
         };
 
         let selectedModel = 'Victoria';
@@ -254,10 +248,57 @@
         const telegramBtn = document.getElementById('telegramBtn');
         const captionBox = document.getElementById('captionBox');
         const captionText = document.getElementById('captionText');
+        const resultImageEl = document.getElementById('resultImage');
+        const imageSpinner = document.getElementById('imageSpinner');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        const globalStatusBar = document.getElementById('globalStatus');
 
         function init() {
             renderProducts();
             setupEventListeners();
+            loadScenarios();
+            startStatusPolling();
+        }
+
+        // --- Scenarios: load 40 rows from "Scenarios" sheet and group by category ---
+        async function loadScenarios() {
+            if (!WEBHOOK_SCENARIOS) {
+                console.warn('WEBHOOK_SCENARIOS endpoint is not configured.');
+                return;
+            }
+
+            try {
+                const res = await fetch(WEBHOOK_SCENARIOS);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+
+                const data = await res.json();
+                if (!Array.isArray(data)) throw new Error('Unexpected scenarios payload (expected array).');
+
+                // Reset groups
+                Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
+
+                data.forEach(row => {
+                    // Support multiple possible field names so the backend has flexibility
+                    const categoryName = row.category || row.Category || row.cat || '';
+                    const sceneName = row.sceneName || row.SceneName || row.name || row.Name || '';
+                    const location = row.location || row.Location || row.description || row.Description || '';
+
+                    if (!categoryName || !sceneName) return;
+
+                    const catKey = Object.keys(SCENARIO_CATEGORIES)
+                        .find(key => SCENARIO_CATEGORIES[key] === categoryName);
+                    if (!catKey) return;
+
+                    const value = location ? `${sceneName},${location}` : sceneName;
+                    const label = location ? `${sceneName} - ${location}` : sceneName;
+                    scenariosByCategory[catKey].push({ value, label });
+                });
+
+                console.log(`Loaded ${data.length} scenarios from backend.`);
+            } catch (err) {
+                console.error('Failed to load scenarios', err);
+                showStatus(statusBar, '✗ Error loading scenarios', 'error');
+            }
         }
 
         function renderProducts() {
@@ -318,9 +359,18 @@
                 btn.addEventListener('click', () => {
                     document.querySelectorAll('.scene-cat-btn').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    const scenes = SCENES[btn.dataset.cat];
-                    sceneSelect.disabled = false;
-                    sceneSelect.innerHTML = '<option value="">Select scene...</option>' + scenes.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+                    const catKey = btn.dataset.cat;
+                    const scenes = scenariosByCategory[catKey] || [];
+
+                    if (!scenes.length) {
+                        sceneSelect.disabled = true;
+                        sceneSelect.innerHTML = '<option value="">No scenes available for this category</option>';
+                    } else {
+                        sceneSelect.disabled = false;
+                        sceneSelect.innerHTML =
+                            '<option value="">Select scene...</option>' +
+                            scenes.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+                    }
                 });
             });
 
@@ -338,10 +388,42 @@
             el.className = 'status-bar visible ' + type;
         }
 
+        // --- Live dashboard status polling (Dashboard!A2) ---
+        async function fetchDashboardStatus() {
+            if (!WEBHOOK_STATUS || !globalStatusBar) return;
+            try {
+                const res = await fetch(WEBHOOK_STATUS);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+
+                const data = await res.json();
+                // Expect backend to return the content of Dashboard!A2 in one of these fields
+                const text = data.status || data.value || data.statusText || data.A2 || '';
+                if (!text) return;
+
+                globalStatusBar.textContent = text;
+                globalStatusBar.classList.add('visible');
+            } catch (err) {
+                console.error('Status polling error', err);
+            }
+        }
+
+        function startStatusPolling() {
+            fetchDashboardStatus();
+            setInterval(fetchDashboardStatus, 5000);
+        }
+
         async function generateImage() {
             if (!selectedProduct || !selectedScene) return;
             showStatus(statusBar, '⚙️ Generating image...');
             generateBtn.disabled = true;
+
+            // Prepare live image placeholder + shimmer
+            if (imageSpinner) imageSpinner.style.display = 'block';
+            if (imagePlaceholder) {
+                imagePlaceholder.style.display = 'block';
+                imagePlaceholder.textContent = 'Image generation in progress...';
+            }
+            if (resultImageEl) resultImageEl.classList.add('shimmer');
 
             // Format scene as 'Category - Scene Name' instead of comma-separated
             const formattedScene = selectedScene.includes(',') 
@@ -377,21 +459,61 @@
             };
 
             try {
-                const res = await fetch(WEBHOOK_IMAGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (res.ok) {
-                    showStatus(statusBar, '✓ Request sent! Check Step 2 for results.', 'success');
-                    captionBtn.disabled = false;
-                    telegramBtn.disabled = false;
-                    document.getElementById('imagePlaceholder').textContent = 'Image generation in progress...';
-                    document.getElementById('resultImage').classList.add('shimmer');
+                const res = await fetch(WEBHOOK_IMAGE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    showStatus(statusBar, '✗ Error sending image request', 'error');
+                } else {
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (e) {
+                        console.warn('Image webhook did not return JSON or parsing failed.', e);
+                    }
+
+                    if (data && data.imageUrl) {
+                        // Display live image
+                        const url = data.imageUrl;
+                        if (resultImageEl) {
+                            resultImageEl.classList.remove('shimmer');
+                            if (imageSpinner) imageSpinner.style.display = 'none';
+                            if (imagePlaceholder) imagePlaceholder.style.display = 'none';
+
+                            let img = document.getElementById('generatedImage');
+                            if (!img) {
+                                img = document.createElement('img');
+                                img.id = 'generatedImage';
+                                img.style.width = '100%';
+                                img.style.height = '100%';
+                                img.style.objectFit = 'cover';
+                                resultImageEl.appendChild(img);
+                            }
+                            img.src = url;
+                        }
+
+                        showStatus(statusBar, '✓ Image generated successfully', 'success');
+                        captionBtn.disabled = false;
+                        telegramBtn.disabled = false;
+                        document.getElementById('finalTelegram').disabled = false;
+                    } else {
+                        // Fallback: request accepted but result not returned synchronously
+                        showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
+                    }
+
                     setTimeout(() => {
                         document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
                         document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
                         document.querySelector('[data-step="2"]').classList.add('active');
                         document.getElementById('step2').classList.add('active');
                     }, 1500);
-                } else { showStatus(statusBar, '✗ Error sending request', 'error'); }
-            } catch (err) { showStatus(statusBar, '✗ Network error: ' + err.message, 'error'); }
+                }
+            } catch (err) {
+                showStatus(statusBar, '✗ Network error: ' + err.message, 'error');
+            }
             generateBtn.disabled = false;
             updateGenerateBtn();
         }
@@ -435,14 +557,35 @@
             };
 
             try {
-                const res = await fetch(WEBHOOK_CAPTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (res.ok) {
-                    showStatus(status, '✓ Caption request sent!', 'success');
+                const res = await fetch(WEBHOOK_CAPTION, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    showStatus(status, '✗ Error generating caption', 'error');
+                } else {
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (e) {
+                        console.warn('Caption webhook did not return JSON or parsing failed.', e);
+                    }
+
                     captionBox.style.display = 'block';
-                    captionText.value = 'Marketing text is being generated...';
+
+                    const caption =
+                        (data && (data.caption || data.text || data.captionText)) ||
+                        'Marketing text is being generated...';
+
+                    captionText.value = caption;
+                    showStatus(status, '✓ Caption ready', 'success');
                     document.getElementById('finalTelegram').disabled = false;
-                } else { showStatus(status, '✗ Error generating caption', 'error'); }
-            } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
+                }
+            } catch (err) {
+                showStatus(status, '✗ Network error: ' + err.message, 'error');
+            }
             captionBtn.disabled = false;
         }
 
