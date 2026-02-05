@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JOEL Studio | Visual Content Studio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #d4af37;
+            --gold-light: #f4e4bc;
+            --black: #0a0a0a;
+            --black-card: rgba(20,20,20,0.85);
+            --white: #fff;
+            --grey: #888;
+            --emerald: #50C878;
+            --glass: rgba(255,255,255,0.05);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Heebo',sans-serif; background:var(--black); color:var(--white); min-height:100vh; direction:rtl; }
+
+        .header { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(10,10,10,0.95); padding:12px 20px; display:flex; justify-content:space-between; align-items:center; backdrop-filter:blur(10px); border-bottom:1px solid rgba(212,175,55,0.2); }
+        .logo { font-size:1.8rem; font-weight:300; letter-spacing:0.2em; color:var(--gold); }
+        .model-toggle { display:flex; gap:8px; }
+        .model-btn { padding:8px 16px; border:1px solid var(--gold); background:transparent; color:var(--gold); cursor:pointer; font-family:inherit; font-size:0.85rem; transition:all 0.3s; border-radius:4px; }
+        .model-btn.active { background:var(--gold); color:var(--black); }
+        .collection-badge { padding:4px 12px; border-radius:20px; font-size:0.75rem; font-weight:600; }
+        .badge-moissanite { background:var(--gold); color:var(--black); }
+        .badge-emerald { background:var(--emerald); color:var(--black); }
+
+        .main { display:flex; flex-direction:column; padding-top:60px; min-height:100vh; }
+
+        .steps-nav { display:flex; justify-content:center; gap:10px; padding:15px; background:var(--black-card); border-bottom:1px solid rgba(212,175,55,0.1); flex-wrap:wrap; }
+        .step-btn { padding:10px 20px; background:var(--glass); border:1px solid rgba(212,175,55,0.3); color:var(--grey); cursor:pointer; font-family:inherit; font-size:0.9rem; border-radius:6px; transition:all 0.3s; }
+        .step-btn.active { background:var(--gold); color:var(--black); border-color:var(--gold); }
+        .step-btn:hover { border-color:var(--gold); }
+
+        .step-panel { display:none; flex:1; overflow-y:auto; }
+        .step-panel.active { display:block; }
+
+        .studio-layout { display:grid; grid-template-columns:1fr 320px; gap:20px; padding:20px; min-height:calc(100vh - 140px); }
+        @media(max-width:900px) { .studio-layout { grid-template-columns:1fr; } }
+
+        .catalog { background:var(--black-card); border-radius:12px; padding:15px; border:1px solid rgba(212,175,55,0.1); }
+        .catalog-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px; }
+        .catalog-title { font-size:1.1rem; color:var(--gold); }
+        .catalog-count { font-size:0.85rem; color:var(--grey); }
+        .products-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; max-height:calc(100vh - 280px); overflow-y:auto; padding:5px; }
+        @media(max-width:600px) { .products-grid { grid-template-columns:repeat(2,1fr); max-height:50vh; } }
+        .product-card { background:var(--glass); border:2px solid transparent; border-radius:8px; overflow:hidden; cursor:pointer; transition:all 0.3s; }
+        .product-card:hover { border-color:rgba(212,175,55,0.5); transform:translateY(-2px); }
+        .product-card.selected { border-color:var(--gold); box-shadow:0 0 20px rgba(212,175,55,0.3); }
+        .product-img { width:100%; aspect-ratio:1; object-fit:cover; background:#1a1a1a; }
+        .product-info { padding:8px; }
+        .product-title { font-size:0.75rem; color:var(--white); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .product-row { font-size:0.65rem; color:var(--grey); margin-top:4px; }
+
+        .dashboard { background:var(--black-card); border-radius:12px; padding:20px; border:1px solid rgba(212,175,55,0.1); display:flex; flex-direction:column; height:fit-content; position:sticky; top:80px; }
+        @media(max-width:900px) { .dashboard { position:relative; top:0; } }
+        .dash-section { margin-bottom:20px; }
+        .dash-label { font-size:0.8rem; color:var(--grey); margin-bottom:8px; display:block; }
+        .dash-value { font-size:0.95rem; color:var(--white); padding:10px; background:var(--glass); border-radius:6px; min-height:40px; }
+        .scene-categories { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+        .scene-cat-btn { padding:10px; background:var(--glass); border:1px solid rgba(212,175,55,0.2); color:var(--grey); cursor:pointer; font-family:inherit; font-size:0.8rem; border-radius:6px; transition:all 0.3s; }
+        .scene-cat-btn.active { background:rgba(212,175,55,0.2); color:var(--gold); border-color:var(--gold); }
+        select { width:100%; padding:10px; background:var(--glass); border:1px solid rgba(212,175,55,0.3); color:var(--white); font-family:inherit; font-size:0.9rem; border-radius:6px; cursor:pointer; }
+        select option { background:var(--black); }
+        .generate-btn { width:100%; padding:14px; background:linear-gradient(135deg,var(--gold),#b8972e); border:none; color:var(--black); font-family:inherit; font-size:1rem; font-weight:600; border-radius:8px; cursor:pointer; transition:all 0.3s; margin-top:auto; }
+        .generate-btn:hover { transform:translateY(-2px); box-shadow:0 5px 20px rgba(212,175,55,0.4); }
+        .generate-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+
+        .copywriter-layout { padding:20px; max-width:800px; margin:0 auto; }
+        .result-frame { background:var(--black-card); border-radius:12px; border:1px solid rgba(212,175,55,0.2); overflow:hidden; margin-bottom:20px; }
+        .result-placeholder { width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#111; color:var(--grey); flex-direction:column; gap:10px; }
+        .shimmer { background:linear-gradient(90deg,#111 25%,#222 50%,#111 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .result-actions { padding:15px; display:flex; gap:10px; flex-wrap:wrap; }
+        .action-btn { flex:1; min-width:150px; padding:12px; border:none; font-family:inherit; font-size:0.9rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .btn-caption { background:linear-gradient(135deg,#4a90d9,#357abd); color:white; }
+        .btn-telegram { background:linear-gradient(135deg,#0088cc,#006699); color:white; }
+        .btn-instagram { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; opacity:0.5; cursor:not-allowed; }
+        .caption-box { background:var(--glass); border:1px solid rgba(212,175,55,0.2); border-radius:8px; padding:15px; margin-top:15px; }
+        .caption-text { width:100%; min-height:120px; background:transparent; border:none; color:var(--white); font-family:inherit; font-size:0.95rem; line-height:1.6; resize:vertical; }
+        .caption-text:focus { outline:none; }
+
+        .distribution-layout { padding:20px; max-width:600px; margin:0 auto; text-align:center; }
+        .final-preview { background:var(--black-card); border-radius:12px; padding:20px; border:1px solid rgba(212,175,55,0.2); }
+        .distribution-btns { display:flex; flex-direction:column; gap:10px; }
+        .dist-btn { padding:14px 20px; border:none; font-family:inherit; font-size:1rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; }
+
+        .status-bar { padding:10px 15px; background:rgba(212,175,55,0.1); border-radius:6px; margin-top:10px; font-size:0.85rem; color:var(--gold); text-align:center; display:none; }
+        .status-bar.visible { display:block; }
+        .status-bar.error { background:rgba(255,0,0,0.1); color:#ff6b6b; }
+        .status-bar.success { background:rgba(80,200,120,0.1); color:var(--emerald); }
+
+        .loading-spinner { width:40px; height:40px; border:3px solid var(--glass); border-top-color:var(--gold); border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { to{transform:rotate(360deg)} }
+
+        ::-webkit-scrollbar { width:6px; }
+        ::-webkit-scrollbar-track { background:var(--black); }
+        ::-webkit-scrollbar-thumb { background:var(--gold); border-radius:3px; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">JOEL</div>
+        <div style="display:flex;align-items:center;gap:15px;">
+            <div class="model-toggle">
+                <button class="model-btn active" data-model="Victoria">Victoria</button>
+                <button class="model-btn" data-model="Alma">Alma</button>
+            </div>
+            <span class="collection-badge badge-moissanite" id="collectionBadge">MOISSANITE</span>
+        </div>
+    </header>
+
+    <main class="main">
+        <nav class="steps-nav">
+            <button class="step-btn active" data-step="1">1. Studio</button>
+            <button class="step-btn" data-step="2">2. Copywriter</button>
+            <button class="step-btn" data-step="3">3. Distribution</button>
+        </nav>
+
+        <section class="step-panel active" id="step1">
+            <div class="studio-layout">
+                <div class="catalog">
+                    <div class="catalog-header">
+                        <span class="catalog-title">Product Catalog</span>
+                        <span class="catalog-count" id="productCount">108 products</span>
+                    </div>
+                    <div class="products-grid" id="productsGrid"></div>
+                </div>
+                <div class="dashboard">
+                    <div class="dash-section">
+                        <span class="dash-label">Selected Product</span>
+                        <div class="dash-value" id="selectedProduct">Select a product...</div>
+                    </div>
+                    <div class="dash-section">
+                        <span class="dash-label">Scene Category</span>
+                        <div class="scene-categories" id="sceneCategories">
+                            <button class="scene-cat-btn" data-cat="lifestyle">Lifestyle</button>
+                            <button class="scene-cat-btn" data-cat="evening">Evening</button>
+                            <button class="scene-cat-btn" data-cat="urban">Urban</button>
+                            <button class="scene-cat-btn" data-cat="artistic">Artistic</button>
+                        </div>
+                        <select id="sceneSelect" disabled><option value="">Select category first...</option></select>
+                    </div>
+                    <div class="dash-section">
+                        <span class="dash-label">Creativity Level</span>
+                        <select id="creativityLevel">
+                            <option value="1">1 - Minimal</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5" selected>5 - Balanced</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10 - Maximum</option>
+                        </select>
+                    </div>
+                    <div class="dash-section">
+                        <span class="dash-label">Aspect Ratio</span>
+                        <select id="aspectRatio">
+                            <option value="1:1">1:1 Square</option>
+                            <option value="9:16">9:16 Story</option>
+                            <option value="16:9">16:9 Wide</option>
+                            <option value="4:5">4:5 Portrait</option>
+                        </select>
+                    </div>
+                    <button class="generate-btn" id="generateBtn" disabled>Generate Image</button>
+                    <div class="status-bar" id="statusBar"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="step-panel" id="step2">
+            <div class="copywriter-layout">
+                <div class="result-frame">
+                    <div class="result-placeholder" id="resultImage">
+                        <div class="loading-spinner" style="display:none" id="imageSpinner"></div>
+                        <span id="imagePlaceholder">Generate an image in Step 1</span>
+                    </div>
+                    <div class="result-actions">
+                        <button class="action-btn btn-caption" id="captionBtn" disabled>📝 Generate Marketing Post</button>
+                        <button class="action-btn btn-telegram" id="telegramBtn" disabled>🚀 Send to Telegram</button>
+                        <button class="action-btn btn-instagram" disabled>📸 Instagram (Soon)</button>
+                    </div>
+                </div>
+                <div class="caption-box" id="captionBox" style="display:none">
+                    <textarea class="caption-text" id="captionText" placeholder="Marketing text will appear here..."></textarea>
+                </div>
+                <div class="status-bar" id="step2Status"></div>
+            </div>
+        </section>
+
+        <section class="step-panel" id="step3">
+            <div class="distribution-layout">
+                <div class="final-preview">
+                    <h2 style="color:var(--gold);margin-bottom:20px;">Ready to Publish</h2>
+                    <div id="finalContent"><p style="color:var(--grey);">Complete Steps 1 & 2 first</p></div>
+                    <div class="distribution-btns" style="margin-top:20px;">
+                        <button class="dist-btn btn-telegram" id="finalTelegram" disabled>🚀 Publish to Telegram</button>
+                        <button class="dist-btn btn-instagram" disabled>📸 Instagram (Coming Soon)</button>
+                    </div>
+                </div>
+                <div class="status-bar" id="step3Status"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="products_verified.js"></script>
+    <script>
+        const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
+        const WEBHOOK_CAPTION = 'https://hook.eu2.make.com/rseu4bjldsj15cm12wx0otg620ahrv67';
+
+        const SCENES = {
+            lifestyle: [
+                { value: 'Morning Espresso,בית קפה מעוצב בנווה צדק', label: 'Morning Espresso - בית קפה מעוצב' },
+                { value: 'Shopping Day,קניון רמת אביב / כיכר המדינה', label: 'Shopping Day - קניון יוקרתי' },
+                { value: 'Friday Vibe,סיבוב בשוק הפשפשים/יפו', label: 'Friday Vibe - שוק הפשפשים' },
+                { value: 'Cozy Winter,קירות עץ חשופים, שטיח פרווה.', label: 'Cozy Winter - אווירה חמימה' }
+            ],
+            evening: [
+                { value: 'Fine Dining,מסעדת שף יוקרתית (לילה)', label: 'Fine Dining - מסעדת שף' },
+                { value: 'Evening Event,השקת מותג / אירוע נוצץ', label: 'Evening Event - אירוע יוקרתי' },
+                { value: 'Business Lounge,מלון יוקרה בתל אביב', label: 'Business Lounge - מלון יוקרה' }
+            ],
+            urban: [
+                { value: 'High-Tech Chic,לובי של מגדל משרדים בתל אביב', label: 'High-Tech Chic - מגדל משרדים' },
+                { value: 'Gallery Visit,גלריית אמנות מודרנית', label: 'Gallery Visit - גלריית אמנות' },
+                { value: 'Parisian Chic,בית קפה אירופאי קלאסי', label: 'Parisian Chic - סגנון פריזאי' }
+            ],
+            artistic: [
+                { value: 'Artistic Rooftop,סטודיו על גג בדרום העיר', label: 'Artistic Rooftop - סטודיו על גג' },
+                { value: 'Rainy Night Noir,תחת פנס רחוב בלילה גשום.', label: 'Rainy Night - לילה גשום' },
+                { value: 'Golden Jewelry Focus,קלוז-אפ ברכב יוקרה', label: 'Golden Focus - רכב יוקרה' },
+                { value: 'Urban Luxury / Night,רחוב רטוב עם אורות ניאון', label: 'Urban Luxury - אורות ניאון' }
+            ]
+        };
+
+        let selectedModel = 'Victoria';
+        let selectedProduct = null;
+        let selectedScene = '';
+
+        const productsGrid = document.getElementById('productsGrid');
+        const productCount = document.getElementById('productCount');
+        const collectionBadge = document.getElementById('collectionBadge');
+        const selectedProductEl = document.getElementById('selectedProduct');
+        const sceneSelect = document.getElementById('sceneSelect');
+        const generateBtn = document.getElementById('generateBtn');
+        const statusBar = document.getElementById('statusBar');
+        const captionBtn = document.getElementById('captionBtn');
+        const telegramBtn = document.getElementById('telegramBtn');
+        const captionBox = document.getElementById('captionBox');
+        const captionText = document.getElementById('captionText');
+
+        function init() {
+            renderProducts();
+            setupEventListeners();
+        }
+
+        function renderProducts() {
+            const filtered = PRODUCTS_DATA.filter(p => {
+                if (selectedModel === 'Victoria') return p.collection === 'Moissanite';
+                return p.collection === 'Emerald';
+            });
+
+            productCount.textContent = `${filtered.length} products`;
+            productsGrid.innerHTML = filtered.map(p => `
+                <div class="product-card" data-id="${p.id}" data-row="${p.rowNumber}">
+                    <img class="product-img" src="${p.image}" alt="${p.title}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%231a1a1a%22 width=%22100%22 height=%22100%22/></svg>'">
+                    <div class="product-info">
+                        <div class="product-title">${p.title}</div>
+                        <div class="product-row">Row ${p.rowNumber}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.querySelectorAll('.product-card').forEach(card => {
+                card.addEventListener('click', () => selectProduct(card.dataset.id));
+            });
+        }
+
+        function selectProduct(productId) {
+            selectedProduct = PRODUCTS_DATA.find(p => p.id === productId);
+            document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
+            document.querySelector(`[data-id="${productId}"]`)?.classList.add('selected');
+            selectedProductEl.textContent = selectedProduct ? selectedProduct.title : 'Select a product...';
+            updateGenerateBtn();
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('.model-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    selectedModel = btn.dataset.model;
+                    collectionBadge.textContent = selectedModel === 'Victoria' ? 'MOISSANITE' : 'EMERALD';
+                    collectionBadge.className = 'collection-badge ' + (selectedModel === 'Victoria' ? 'badge-moissanite' : 'badge-emerald');
+                    selectedProduct = null;
+                    selectedProductEl.textContent = 'Select a product...';
+                    renderProducts();
+                    updateGenerateBtn();
+                });
+            });
+
+            document.querySelectorAll('.step-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById('step' + btn.dataset.step).classList.add('active');
+                });
+            });
+
+            document.querySelectorAll('.scene-cat-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.scene-cat-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    const scenes = SCENES[btn.dataset.cat];
+                    sceneSelect.disabled = false;
+                    sceneSelect.innerHTML = '<option value="">Select scene...</option>' + scenes.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+                });
+            });
+
+            sceneSelect.addEventListener('change', () => { selectedScene = sceneSelect.value; updateGenerateBtn(); });
+            generateBtn.addEventListener('click', generateImage);
+            captionBtn.addEventListener('click', generateCaption);
+            telegramBtn.addEventListener('click', sendToTelegram);
+            document.getElementById('finalTelegram').addEventListener('click', sendToTelegram);
+        }
+
+        function updateGenerateBtn() { generateBtn.disabled = !selectedProduct || !selectedScene; }
+
+        function showStatus(el, msg, type = '') {
+            el.textContent = msg;
+            el.className = 'status-bar visible ' + type;
+        }
+
+        async function generateImage() {
+            if (!selectedProduct || !selectedScene) return;
+            showStatus(statusBar, '⚙️ Generating image...');
+            generateBtn.disabled = true;
+
+            // Format scene as 'Category - Scene Name' instead of comma-separated
+            const formattedScene = selectedScene.includes(',') 
+                ? selectedScene.replace(',', ' - ') 
+                : selectedScene;
+
+            // Ensure Alma's reference image URL is correct
+            let modelUrl = selectedProduct.modelUrl;
+            if (selectedModel === 'Alma') {
+                modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
+            }
+
+            // Build model-specific prompt instructions
+            const modelPrompt = selectedModel === 'Alma' 
+                ? 'Model: Alma - A glamorous, captivating woman with exotic features. Use Alma\'s name and traits in the prompt.'
+                : 'Model: Victoria - Use Victoria\'s name and traits in the prompt.';
+
+            const payload = {
+                source: 'Web_App',
+                product_id: selectedProduct.id,
+                rowNumber: selectedProduct.rowNumber,
+                product: selectedProduct.title,
+                model: selectedModel,
+                collection: selectedProduct.collection,
+                model_url: modelUrl,
+                scene: formattedScene,
+                situation: formattedScene, // Add situation field with formatted value
+                aspect_ratio: document.getElementById('aspectRatio').value,
+                creativity: parseInt(document.getElementById('creativityLevel').value),
+                model_prompt: modelPrompt,
+                scale_law: 'The jewelry must be visually reduced by 500% to stay dainty and realistic. Use delicate proportions.',
+                command: 'Generate Image'
+            };
+
+            try {
+                const res = await fetch(WEBHOOK_IMAGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) {
+                    showStatus(statusBar, '✓ Request sent! Check Step 2 for results.', 'success');
+                    captionBtn.disabled = false;
+                    telegramBtn.disabled = false;
+                    document.getElementById('imagePlaceholder').textContent = 'Image generation in progress...';
+                    document.getElementById('resultImage').classList.add('shimmer');
+                    setTimeout(() => {
+                        document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
+                        document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+                        document.querySelector('[data-step="2"]').classList.add('active');
+                        document.getElementById('step2').classList.add('active');
+                    }, 1500);
+                } else { showStatus(statusBar, '✗ Error sending request', 'error'); }
+            } catch (err) { showStatus(statusBar, '✗ Network error: ' + err.message, 'error'); }
+            generateBtn.disabled = false;
+            updateGenerateBtn();
+        }
+
+        async function generateCaption() {
+            if (!selectedProduct) return;
+            const status = document.getElementById('step2Status');
+            showStatus(status, '📝 Generating marketing text...');
+            captionBtn.disabled = true;
+
+            // Format scene as 'Category - Scene Name' instead of comma-separated
+            const formattedScene = selectedScene.includes(',') 
+                ? selectedScene.replace(',', ' - ') 
+                : selectedScene;
+
+            // Ensure Alma's reference image URL is correct
+            let modelUrl = selectedProduct.modelUrl;
+            if (selectedModel === 'Alma') {
+                modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
+            }
+
+            // Build model-specific prompt instructions
+            const modelPrompt = selectedModel === 'Alma' 
+                ? 'Model: Alma - A glamorous, captivating woman with exotic features. Use Alma\'s name and traits in the prompt.'
+                : 'Model: Victoria - Use Victoria\'s name and traits in the prompt.';
+
+            const fixedUrl = modelUrl.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('dl=0', 'raw=1');
+                
+            const payload = {
+                source: 'Web_App',
+                product_id: selectedProduct.id,
+                rowNumber: selectedProduct.rowNumber,
+                product: selectedProduct.title,
+                model: selectedModel,
+                collection: selectedProduct.collection,
+                model_url: fixedUrl,
+                scene: formattedScene,
+                situation: formattedScene, // Add situation field with formatted value
+                model_prompt: modelPrompt,
+                command: 'Generate Caption'
+            };
+
+            try {
+                const res = await fetch(WEBHOOK_CAPTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) {
+                    showStatus(status, '✓ Caption request sent!', 'success');
+                    captionBox.style.display = 'block';
+                    captionText.value = 'Marketing text is being generated...';
+                    document.getElementById('finalTelegram').disabled = false;
+                } else { showStatus(status, '✗ Error generating caption', 'error'); }
+            } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
+            captionBtn.disabled = false;
+        }
+
+        async function sendToTelegram() {
+            if (!selectedProduct) return;
+            const status = document.getElementById('step2Status');
+            showStatus(status, '🚀 Sending to Telegram...');
+            telegramBtn.disabled = true;
+
+            // Format scene as 'Category - Scene Name' instead of comma-separated
+            const formattedScene = selectedScene.includes(',') 
+                ? selectedScene.replace(',', ' - ') 
+                : selectedScene;
+
+            // Ensure Alma's reference image URL is correct
+            let modelUrl = selectedProduct.modelUrl;
+            if (selectedModel === 'Alma') {
+                modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
+            }
+
+            const payload = {
+                source: 'Web_App',
+                product_id: selectedProduct.id,
+                rowNumber: selectedProduct.rowNumber,
+                product: selectedProduct.title,
+                model: selectedModel,
+                collection: selectedProduct.collection,
+                model_url: modelUrl,
+                scene: formattedScene,
+                situation: formattedScene, // Add situation field with formatted value
+                command: 'Approve & Post'
+            };
+
+            try {
+                const res = await fetch(WEBHOOK_CAPTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) { showStatus(status, '✓ Sent to Telegram!', 'success'); }
+                else { showStatus(status, '✗ Error sending to Telegram', 'error'); }
+            } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
+            telegramBtn.disabled = false;
+        }
+
+        init();
+    </script>
+</body>
+</html>

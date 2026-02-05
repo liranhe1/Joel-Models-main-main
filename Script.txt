@@ -1,0 +1,119 @@
+function onEdit(e) {
+  var sheet = e.source.getActiveSheet();
+  var sheetName = sheet.getName();
+  var range = e.range;
+  var row = range.getRow();
+  var col = range.getColumn();
+  var val = range.getValue();
+
+  // --- מסלול א': דשבורד ויקטוריה (הפעלה מהשיטס) ---
+  if (sheetName == "Victoria_Dashboard" && row == 2 && val == true) {
+    victoriaTrigger(e); 
+    return;
+  }
+
+  // --- מסלול ב': אפליקציית גלייד (גיליון Moissanite) ---
+  if (sheetName == "Moissanite" && col == 7 && val == "Generate") {
+    var payload = {
+      "source": "Glide_App",
+      "rowNumber": row,
+      "product_id": sheet.getRange(row, 1).getValue(),    // עמודה A
+      "product": sheet.getRange(row, 2).getValue(),       // עמודה B
+      "scene": sheet.getRange(row, 13).getValue(),        // עמודה M
+      "do_image": sheet.getRange(row, 16).getValue(),     // עמודה P
+      "do_caption": sheet.getRange(row, 17).getValue(),   // עמודה Q
+      "do_telegram": sheet.getRange(row, 18).getValue(),  // עמודה R
+      "aspect_ratio": String(sheet.getRange(row, 19).getValue()), // עמודה S
+      "creativity": sheet.getRange(row, 20).getValue(),   // עמודה T
+      "command": "Studio_Generate"
+    };
+
+    var webhookUrl = "https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl";
+    
+    UrlFetchApp.fetch(webhookUrl, {
+      "method": "post",
+      "contentType": "application/json",
+      "payload": JSON.stringify(payload)
+    });
+
+    sheet.getRange(row, 7).setValue("⌛ בתהליך...");
+  }
+}
+
+// פונקציית הטריגר המקורית שלך
+function victoriaTrigger(e) {
+  var sheet = e.source.getActiveSheet();
+  var range = e.range;
+  var col = range.getColumn();
+  var webhookUrl = (col == 6) ? "https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl" : "https://hook.eu2.make.com/rseu4bjldsj15cm12wx0otg620ahrv67";
+  var command = (col == 6) ? "Generate Image" : (col == 7 ? "Generate Caption" : "Approve & Post");
+
+  var selectedProduct = sheet.getRange("B2").getValue();
+  var dataSheet = e.source.getSheetByName("Moissanite");
+  var data = dataSheet.getDataRange().getValues();
+  var rowNumber = 0;
+  var productId = "";
+  var modelUrl = "";
+  var collection = "";
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][1] == selectedProduct) { 
+      rowNumber = i + 1;
+      productId = data[i][0];
+      modelUrl = data[i][5];    
+      collection = data[i][14]; 
+      break;
+    }
+  }
+
+  var payload = {
+    "source": "Dashboard",
+    "product_id": productId,
+    "rowNumber": rowNumber,
+    "product": selectedProduct,
+    "collection": collection,
+    "model_url": modelUrl,
+    "scene": sheet.getRange("D2").getValue(),
+    "aspect_ratio": String(sheet.getRange("B3").getValue()),
+    "influence": sheet.getRange("C3").getValue(),
+    "refinement": sheet.getRange("D3").getValue(),
+    "command": command
+  };
+
+  UrlFetchApp.fetch(webhookUrl, {
+    "method": "post",
+    "contentType": "application/json",
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true 
+  });
+  
+  sheet.getRange("J5").setValue("⚙️ שולחת פקודה...");
+  if (col == 6) sheet.getRange("D3").clearContent();
+}
+
+// --- שחזור פונקציית האיפוס ש"נעלמה" ---
+function resetDashboard() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var dash = ss.getSheetByName("Victoria_Dashboard");
+  
+  if (!dash) {
+    ss.toast("שגיאה: גיליון Victoria_Dashboard לא נמצא!");
+    return;
+  }
+
+  dash.getRange("B1:B2").clearContent();
+  dash.getRange("D2").clearContent();
+  dash.getRange("B3:C3").clearContent();
+  dash.getRange("D3").clearContent();
+  dash.getRange("F2:H2").setValue(false);
+  dash.getRange("D5:H15").clearContent();
+  dash.getRange("J5").setValue("💤 ממתין לפקודה...");
+  
+  ss.toast("הדשבורד אופס בהצלחה!");
+}
+
+// --- שחזור פונקציית האישור ---
+function forceAuth() {
+  UrlFetchApp.fetch("https://google.com");
+  SpreadsheetApp.getUi().alert("ההרשאות אושרו! כעת ניתן לעבוד.");
+}
