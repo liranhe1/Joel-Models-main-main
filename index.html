@@ -254,6 +254,7 @@
         const imagePlaceholder = document.getElementById('imagePlaceholder');
         const globalStatusBar = document.getElementById('globalStatus');
         let userHasTriggeredGeneration = false;
+        let statusPollingIntervalId = null;
 
         function getImageUrl(obj) {
             if (!obj) return null;
@@ -620,6 +621,21 @@
                     data.A2 ||
                     '';
                 if (!text) return;
+                // New format: DONE: <url>  => image is ready and URL follows
+                if (text.startsWith('DONE:')) {
+                    const url = text.replace('DONE: ', '').trim();
+                    if (url) {
+                        setGeneratedImageUrl(url);
+                        globalStatusBar.textContent = '✓ Image Ready!';
+                        globalStatusBar.classList.add('visible');
+                        // Stop polling once image is ready to save credits
+                        if (statusPollingIntervalId) {
+                            clearInterval(statusPollingIntervalId);
+                            statusPollingIntervalId = null;
+                        }
+                    }
+                    return;
+                }
                 // מעדכן את ה-status רק אחרי שהמשתמש הפעיל יצירת תמונה (לא מציג "התמונה מוכנה" לפני פעולה)
                 if (userHasTriggeredGeneration) {
                     globalStatusBar.textContent = text;
@@ -633,7 +649,10 @@
         function startStatusPolling() {
             fetchDashboardStatus();
             // Credit protection: all status checks (e.g. Dashboard J5) run every 25 seconds only
-            setInterval(fetchDashboardStatus, 25000);
+            if (statusPollingIntervalId) {
+                clearInterval(statusPollingIntervalId);
+            }
+            statusPollingIntervalId = setInterval(fetchDashboardStatus, 25000);
         }
 
         async function generateImage() {
