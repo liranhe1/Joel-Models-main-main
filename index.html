@@ -697,7 +697,7 @@
                     if (imageSpinner) imageSpinner.style.display = 'none';
                     if (resultImageEl) resultImageEl.classList.remove('shimmer');
 
-                    globalStatusBar.textContent = '✓ Post Ready!';
+                    globalStatusBar.textContent = '✓ Post Ready';
                     globalStatusBar.classList.add('visible');
                     const step2Status = document.getElementById('step2Status');
                     if (step2Status) {
@@ -718,13 +718,28 @@
                     setNextStepGlow(telegramBtn);
                 };
 
-                // New format: J5 == 'DONE' indicates caption ready in Dashboard!D5
-                if (trimmedText.toUpperCase() === 'DONE') {
-                    const captionFromD5 =
-                        (data.D5 || data.d5 || '').toString().trim();
-                    if (captionFromD5) {
-                        handleCaptionPayload(captionFromD5);
-                        generationPhase = 'idle';
+                // J5 == 'DONE' indicates either image URL or caption ready in the dashboard
+                if (trimmedText.toUpperCase() === 'DONE' && userHasTriggeredGeneration) {
+                    if (generationPhase === 'image') {
+                        // Image stage: get image URL from H5 (or similar) and show "Image Ready"
+                        const urlFromSheet =
+                            (data.H5 || data.h5 || data.image || data.imageUrl || '').toString().trim();
+                        if (urlFromSheet) {
+                            setGeneratedImageUrl(urlFromSheet);
+                        }
+                        globalStatusBar.textContent = '✓ Image Ready';
+                        globalStatusBar.classList.add('visible');
+                        if (captionBtn) captionBtn.disabled = false;
+                        generationPhase = 'caption';
+                        setNextStepGlow(captionBtn);
+                    } else {
+                        // Post stage: get caption text from D5 only
+                        const captionFromD5 =
+                            (data.D5 || data.d5 || '').toString().trim();
+                        if (captionFromD5) {
+                            handleCaptionPayload(captionFromD5);
+                            generationPhase = 'idle';
+                        }
                     }
                     if (statusPollingIntervalId) {
                         clearInterval(statusPollingIntervalId);
@@ -733,32 +748,7 @@
                     return;
                 }
 
-                // Reliability: if long non-URL text appears (Gemini caption) even without DONE: and we are in caption phase, treat as caption
-                const looksLikeUrlPlain = /^https?:\/\//i.test(text);
-                if (generationPhase === 'caption' && !looksLikeUrlPlain && text.length > 60) {
-                    handleCaptionPayload(text.trim());
-                    generationPhase = 'idle';
-                    if (statusPollingIntervalId) {
-                        clearInterval(statusPollingIntervalId);
-                        statusPollingIntervalId = null;
-                    }
-                    return;
-                }
-
-                // Processing state: keep spinner visible, no Post Ready yet
-                if (/processing/i.test(text) || text.includes('מתחילה לעבוד')) {
-                    if (imageSpinner) imageSpinner.style.display = 'block';
-                    if (resultImageEl) resultImageEl.classList.add('shimmer');
-                    globalStatusBar.textContent = text;
-                    globalStatusBar.classList.add('visible');
-                    return;
-                }
-
-                // Default status echo only after user started a run
-                if (userHasTriggeredGeneration) {
-                    globalStatusBar.textContent = text;
-                    globalStatusBar.classList.add('visible');
-                }
+                // For all other J5 values, dashboard does not change global status bar
             } catch (err) {
                 console.error('Status polling error', err);
             }
