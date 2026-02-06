@@ -100,12 +100,18 @@
         .distribution-btns { display:flex; flex-direction:column; gap:10px; }
         .dist-btn { padding:14px 20px; border:none; font-family:inherit; font-size:1rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; }
 
-        .status-bar { padding:6px 12px; min-height:28px; background:rgba(212,175,55,0.08); border-radius:4px; margin-top:8px; font-size:0.8rem; color:var(--gold); text-align:center; display:none; border-bottom:1px solid rgba(212,175,55,0.15); transition:opacity 0.5s ease; }
+        .status-row { display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap; }
+        .status-bar { flex:1; min-width:200px; padding:6px 12px; min-height:28px; background:rgba(212,175,55,0.08); border-radius:4px; font-size:0.8rem; color:var(--gold); text-align:center; display:none; border-bottom:1px solid rgba(212,175,55,0.15); transition:opacity 0.5s ease; }
+        .reset-btn { padding:6px 14px; font-size:0.8rem; background:rgba(212,175,55,0.15); border:1px solid rgba(212,175,55,0.4); color:var(--gold); border-radius:4px; cursor:pointer; font-family:inherit; transition:all 0.3s; white-space:nowrap; }
+        .reset-btn:hover { background:rgba(212,175,55,0.25); }
         .status-bar.visible { display:block; }
         .status-bar.persona-shimmer .liran-name { background:linear-gradient(90deg,var(--gold),#f4e4bc,var(--gold)); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:persona-shimmer 2.5s ease-in-out infinite; }
         @keyframes persona-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         .status-bar.persona-fade-in { animation:persona-fade-in 0.5s ease-out forwards; }
         @keyframes persona-fade-in { from{opacity:0.6} to{opacity:1} }
+        .status-bar.persona-shimmer.persona-waiting { animation:persona-pulse 2s ease-in-out infinite; }
+        .status-bar.persona-shimmer.persona-waiting .liran-name { animation:persona-shimmer 2.5s ease-in-out infinite; }
+        @keyframes persona-pulse { 0%,100%{opacity:1} 50%{opacity:0.85} }
         .status-bar.error { background:rgba(255,0,0,0.1); color:#ff6b6b; }
         .status-bar.success { background:rgba(80,200,120,0.1); color:var(--emerald); }
 
@@ -135,7 +141,10 @@
             <button class="step-btn" data-step="2">2. Copywriter</button>
             <button class="step-btn" data-step="3">3. Distribution</button>
         </nav>
-        <div class="status-bar" id="globalStatus"></div>
+        <div class="status-row">
+            <div class="status-bar" id="globalStatus"></div>
+            <button type="button" class="reset-btn" id="hardResetBtn" title="ריסט מלא">⟲ Hard Reset</button>
+        </div>
 
         <section class="step-panel active" id="step1">
             <div class="studio-layout">
@@ -247,6 +256,14 @@
             'מלטשת את התיאור, לירן - אנחנו יוצרים כאן רגע קסום.',
             'לירן, עוד רגע וזה מוכן. היוקרה מחכה רק לך.'
         ];
+        const RETRY_PHRASES = [
+            'לירן, ויקטוריה מפעילה את מנגנון ה-Retry... היא לא מוותרת לשרת עד שהתמונה תצא מושלמת.',
+            'ה-API קצת עמוס, לירן, אבל עלמא כבר בניסיון נוסף. עוד קצת סבלנות.',
+            'לירן, אנחנו במוד \'המתנה חכמה\'. ויקטוריה בודקת שהכל מתקדם לפי התוכנית.'
+        ];
+        const TIMEOUT_MS = 12 * 60 * 1000;
+        const POLL_INTERVAL_MS = 4000;
+        const FAILURE_MESSAGE = 'לירן, נראה שגם 5 ניסיונות לא הספיקו. אולי כדאי לבדוק את ה-API או לעשות ריסט.';
 
         const SCENARIO_CATEGORIES = {
             'daylight-urban': 'Daylight Urban',
@@ -293,7 +310,7 @@
         let lastSeenStatus = '';
         let ignoreDoneUntil = 0; // timestamp (ms) until which DONE is ignored (10s after button click)
         let lastJ5Content = '';  // last value seen in J5
-        let lastJ5ChangeAt = 0;  // when J5 last changed (reset on each change; timeout if unchanged for 10 min)
+        let lastJ5ChangeAt = 0;  // when J5 last changed (reset on each change; timeout if unchanged for 12 min)
         let personaCycleIntervalId = null;
         let personaPhraseIndex = 0;
 
@@ -366,17 +383,18 @@
                 clearInterval(personaCycleIntervalId);
                 personaCycleIntervalId = null;
             }
-            if (globalStatusBar) globalStatusBar.classList.remove('persona-shimmer', 'persona-fade-in');
+            if (globalStatusBar) globalStatusBar.classList.remove('persona-shimmer', 'persona-fade-in', 'persona-waiting');
         }
 
         function showPersonaPhrase() {
             if (!globalStatusBar) return;
-            const phrases = selectedModel === 'Alma' ? ALMA_PHRASES : VICTORIA_PHRASES;
-            const phrase = phrases[personaPhraseIndex % phrases.length];
+            const modelPhrases = selectedModel === 'Alma' ? ALMA_PHRASES : VICTORIA_PHRASES;
+            const allPhrases = [...modelPhrases, ...RETRY_PHRASES];
+            const phrase = allPhrases[personaPhraseIndex % allPhrases.length];
             personaPhraseIndex++;
             globalStatusBar.classList.remove('persona-fade-in');
             void globalStatusBar.offsetWidth;
-            globalStatusBar.classList.add('persona-shimmer', 'persona-fade-in', 'visible');
+            globalStatusBar.classList.add('persona-shimmer', 'persona-fade-in', 'persona-waiting', 'visible');
             globalStatusBar.innerHTML = wrapLiranWithShimmer(phrase);
             globalStatusBar.classList.remove('error', 'success');
         }
@@ -394,6 +412,51 @@
             el.disabled = locked;
             if (locked) el.classList.add('btn-locked');
             else el.classList.remove('btn-locked');
+        }
+
+        function hardReset() {
+            stopPersonaCycle();
+            if (statusPollingIntervalId) {
+                clearInterval(statusPollingIntervalId);
+                statusPollingIntervalId = null;
+            }
+            userHasTriggeredGeneration = false;
+            generationPhase = 'idle';
+            lastJ5Content = '';
+            lastJ5ChangeAt = 0;
+            lastSeenStatus = '';
+            currentCaption = null;
+            currentImageUrl = null;
+            if (captionText) captionText.value = '';
+            if (captionBox) captionBox.style.display = 'none';
+            if (globalStatusBar) {
+                globalStatusBar.textContent = '';
+                globalStatusBar.innerHTML = '';
+                globalStatusBar.className = 'status-bar';
+                globalStatusBar.classList.remove('visible', 'error', 'success');
+            }
+            if (statusBar) { statusBar.textContent = ''; statusBar.className = 'status-bar'; }
+            const step2Status = document.getElementById('step2Status');
+            if (step2Status) step2Status.textContent = '';
+            generateBtn.disabled = !selectedProduct;
+            setButtonLocked(captionBtn, true);
+            setButtonLocked(telegramBtn, true);
+            const finalT = document.getElementById('finalTelegram');
+            if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
+            if (captionBtn) captionBtn.textContent = '📝 Generate Marketing Post';
+            setNextStepGlow(selectedProduct ? generateBtn : null);
+            // Reset result image to placeholder
+            const container = document.getElementById('resultImage');
+            const img = document.getElementById('generatedImage');
+            const placeholder = document.getElementById('imagePlaceholder');
+            const spinner = document.getElementById('imageSpinner');
+            if (container) {
+                container.classList.remove('shimmer');
+                if (img) img.style.display = 'none';
+                if (placeholder) { placeholder.style.display = 'block'; placeholder.textContent = 'Generate an image in Step 1'; }
+                if (spinner) spinner.style.display = 'none';
+            }
+            startStatusPolling();
         }
 
         function init() {
@@ -695,6 +758,8 @@
                 setNextStepGlow(null);
                 sendToTelegram();
             });
+            const hardResetBtn = document.getElementById('hardResetBtn');
+            if (hardResetBtn) hardResetBtn.addEventListener('click', hardReset);
         }
 
         // Unlock: Generate Image enabled when a product is selected (no mandatory scene dependency)
@@ -732,15 +797,15 @@
                     lastJ5Content = text;
                     lastJ5ChangeAt = Date.now();
                 }
-                // Timeout only if J5 has stayed exactly the same for 10 consecutive minutes
-                if (userHasTriggeredGeneration && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > 10 * 60 * 1000)) {
+                // Timeout only if J5 has a value AND has stayed unchanged for 12 min (never timeout while J5 is empty)
+                if (userHasTriggeredGeneration && text && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > TIMEOUT_MS)) {
                     stopPersonaCycle();
                     if (statusPollingIntervalId) {
                         clearInterval(statusPollingIntervalId);
                         statusPollingIntervalId = null;
                     }
-                    globalStatusBar.textContent = 'Timeout - Please Reset';
-                    globalStatusBar.classList.add('visible');
+                    globalStatusBar.innerHTML = wrapLiranWithShimmer(FAILURE_MESSAGE);
+                    globalStatusBar.classList.add('visible', 'error', 'persona-shimmer');
                     return;
                 }
                 if (text === '' && !userHasTriggeredGeneration) return;
@@ -814,11 +879,10 @@
 
         function startStatusPolling() {
             fetchDashboardStatus();
-            // Credit protection: all status checks (e.g. Dashboard J5) run every 25 seconds only
             if (statusPollingIntervalId) {
                 clearInterval(statusPollingIntervalId);
             }
-            statusPollingIntervalId = setInterval(fetchDashboardStatus, 25000);
+            statusPollingIntervalId = setInterval(fetchDashboardStatus, POLL_INTERVAL_MS);
         }
 
         async function generateImage() {
