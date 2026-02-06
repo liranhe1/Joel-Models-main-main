@@ -582,14 +582,14 @@
                     const catKey = btn.dataset.cat;
                     const scenes = scenariosByCategory[catKey] || [];
 
+                    // Scene selector should always remain enabled so user can re-select scenes
+                    sceneSelect.disabled = false;
                     if (!scenes.length) {
-                        sceneSelect.disabled = true;
-                        sceneSelect.innerHTML = '<option value="">No scenes available for this category</option>';
+                        sceneSelect.innerHTML = '<option value=\"\">No scenes available for this category</option>';
                     } else {
-                        sceneSelect.disabled = false;
                         sceneSelect.innerHTML =
-                            '<option value="">Select scene...</option>' +
-                            scenes.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+                            '<option value=\"\">Select scene...</option>' +
+                            scenes.map(s => `<option value=\"${s.value}\">${s.label}</option>`).join('');
                     }
                 });
             });
@@ -659,6 +659,30 @@
                     data.A2 ||
                     '';
                 if (!text) return;
+
+                const handleCaptionPayload = (payloadText) => {
+                    const captionArea = document.getElementById('captionText');
+                    const captionContainer = document.getElementById('captionBox');
+                    if (captionContainer) captionContainer.style.display = 'block';
+                    if (captionArea) captionArea.value = payloadText;
+                    globalStatusBar.textContent = '✓ Post Ready!';
+                    globalStatusBar.classList.add('visible');
+                    const step2Status = document.getElementById('step2Status');
+                    if (step2Status) {
+                        showStatus(step2Status, '✓ Post Ready!', 'success');
+                    }
+                    if (captionBtn) {
+                        captionBtn.disabled = false;
+                        captionBtn.textContent = '📝 Generate Marketing Post';
+                    }
+                    if (telegramBtn) {
+                        telegramBtn.disabled = false;
+                    }
+                    const finalTelegramBtn = document.getElementById('finalTelegram');
+                    if (finalTelegramBtn) finalTelegramBtn.disabled = false;
+                    setNextStepGlow(telegramBtn);
+                };
+
                 // New format: DONE: <payload>  => can be image URL or final caption/post text
                 if (text.startsWith('DONE:')) {
                     const payload = text.replace('DONE: ', '').trim();
@@ -675,32 +699,24 @@
                             setNextStepGlow(captionBtn);
                         } else {
                             // Caption-ready case: payload is the final marketing post text
-                            const captionArea = document.getElementById('captionText');
-                            const captionContainer = document.getElementById('captionBox');
-                            if (captionContainer) captionContainer.style.display = 'block';
-                            if (captionArea) captionArea.value = payload;
-                            globalStatusBar.textContent = '✓ Post Ready!';
-                            globalStatusBar.classList.add('visible');
-                            const step2Status = document.getElementById('step2Status');
-                            if (step2Status) {
-                                showStatus(step2Status, '✓ Post Ready!', 'success');
-                            }
-                            if (captionBtn) {
-                                captionBtn.disabled = false;
-                                captionBtn.textContent = '📝 Generate Marketing Post';
-                            }
-                            if (telegramBtn) {
-                                telegramBtn.disabled = false;
-                            }
-                            setNextStepGlow(telegramBtn);
-                            const finalTelegramBtn = document.getElementById('finalTelegram');
-                            if (finalTelegramBtn) finalTelegramBtn.disabled = false;
+                            handleCaptionPayload(payload);
                         }
                         // Stop polling once final DONE: status is handled to save credits
                         if (statusPollingIntervalId) {
                             clearInterval(statusPollingIntervalId);
                             statusPollingIntervalId = null;
                         }
+                    }
+                    return;
+                }
+
+                // Reliability: if long non-URL text appears (Gemini caption) even without DONE:, treat as caption
+                const looksLikeUrlPlain = /^https?:\/\//i.test(text);
+                if (!looksLikeUrlPlain && text.length > 60) {
+                    handleCaptionPayload(text.trim());
+                    if (statusPollingIntervalId) {
+                        clearInterval(statusPollingIntervalId);
+                        statusPollingIntervalId = null;
                     }
                     return;
                 }
