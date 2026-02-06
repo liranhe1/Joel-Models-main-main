@@ -71,6 +71,7 @@
 
         .next-step-glow {
             box-shadow:0 0 0 rgba(212,175,55,0);
+            border-color:rgba(212,175,55,0.9) !important;
             animation:next-step-glow-pulse 1.8s ease-in-out infinite;
         }
         @keyframes next-step-glow-pulse {
@@ -265,7 +266,8 @@
         const globalStatusBar = document.getElementById('globalStatus');
         let userHasTriggeredGeneration = false;
         let statusPollingIntervalId = null;
-        const glowTargets = [];
+        // Tracks where we are in a generation run: 'idle' | 'image' | 'caption'
+        let generationPhase = 'idle';
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -696,10 +698,12 @@
                             if (captionBtn) {
                                 captionBtn.disabled = false;
                             }
+                            generationPhase = 'caption';
                             setNextStepGlow(captionBtn);
                         } else {
                             // Caption-ready case: payload is the final marketing post text
                             handleCaptionPayload(payload);
+                            generationPhase = 'idle';
                         }
                         // Stop polling once final DONE: status is handled to save credits
                         if (statusPollingIntervalId) {
@@ -710,10 +714,11 @@
                     return;
                 }
 
-                // Reliability: if long non-URL text appears (Gemini caption) even without DONE:, treat as caption
+                // Reliability: if long non-URL text appears (Gemini caption) even without DONE: and we are in caption phase, treat as caption
                 const looksLikeUrlPlain = /^https?:\/\//i.test(text);
-                if (!looksLikeUrlPlain && text.length > 60) {
+                if (generationPhase === 'caption' && !looksLikeUrlPlain && text.length > 60) {
                     handleCaptionPayload(text.trim());
+                    generationPhase = 'idle';
                     if (statusPollingIntervalId) {
                         clearInterval(statusPollingIntervalId);
                         statusPollingIntervalId = null;
@@ -742,6 +747,33 @@
         async function generateImage() {
             if (!selectedProduct) return;
             userHasTriggeredGeneration = true;
+            generationPhase = 'image';
+
+            // Clean reset: clear previous caption, hide old image, remove glow
+            setNextStepGlow(null);
+            if (captionText) captionText.value = '';
+            if (captionBox) captionBox.style.display = 'none';
+            if (statusBar) {
+                statusBar.textContent = '';
+                statusBar.className = 'status-bar';
+            }
+            const step2Status = document.getElementById('step2Status');
+            if (step2Status) {
+                step2Status.textContent = '';
+                step2Status.className = 'status-bar';
+            }
+            const imgEl = document.getElementById('generatedImage');
+            if (imgEl) {
+                imgEl.src = '';
+                imgEl.style.display = 'none';
+            }
+            if (resultImageEl) {
+                resultImageEl.classList.remove('shimmer');
+            }
+            if (imagePlaceholder) {
+                imagePlaceholder.style.display = 'none';
+            }
+
             // מעבר לשונית: בלחיצה על 'Generate Image' עוברים מיד ללשונית Copywriter (2)
             document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
@@ -836,6 +868,8 @@
                                         captionBtn.disabled = false;
                                         telegramBtn.disabled = false;
                                         document.getElementById('finalTelegram').disabled = false;
+                                        generationPhase = 'caption';
+                                        setNextStepGlow(captionBtn);
                                         return true;
                                     }
                                 } catch (err) { console.warn('Poll fetch failed', err); }
@@ -861,6 +895,7 @@
                             captionBtn.disabled = false;
                             telegramBtn.disabled = false;
                             document.getElementById('finalTelegram').disabled = false;
+                            generationPhase = 'caption';
                             setNextStepGlow(captionBtn);
                         } else {
                             showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
