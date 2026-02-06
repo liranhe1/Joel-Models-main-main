@@ -87,6 +87,7 @@
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
         .result-actions { padding:15px; display:flex; gap:10px; flex-wrap:wrap; }
         .action-btn { flex:1; min-width:150px; padding:12px; border:none; font-family:inherit; font-size:0.9rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .action-btn.btn-locked { opacity:0.3; cursor:not-allowed; pointer-events:none; }
         .btn-caption { background:linear-gradient(135deg,#4a90d9,#357abd); color:white; }
         .btn-telegram { background:linear-gradient(135deg,#0088cc,#006699); color:white; }
         .btn-instagram { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; opacity:0.5; cursor:not-allowed; }
@@ -99,7 +100,7 @@
         .distribution-btns { display:flex; flex-direction:column; gap:10px; }
         .dist-btn { padding:14px 20px; border:none; font-family:inherit; font-size:1rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; }
 
-        .status-bar { padding:10px 15px; background:rgba(212,175,55,0.1); border-radius:6px; margin-top:10px; font-size:0.85rem; color:var(--gold); text-align:center; display:none; }
+        .status-bar { padding:6px 12px; min-height:28px; background:rgba(212,175,55,0.08); border-radius:4px; margin-top:8px; font-size:0.8rem; color:var(--gold); text-align:center; display:none; border-bottom:1px solid rgba(212,175,55,0.15); }
         .status-bar.visible { display:block; }
         .status-bar.error { background:rgba(255,0,0,0.1); color:#ff6b6b; }
         .status-bar.success { background:rgba(80,200,120,0.1); color:var(--emerald); }
@@ -273,7 +274,8 @@
         let currentImageUrl = null;
         // Polling safety
         let lastSeenStatus = '';
-        let ignoreDoneUntil = 0; // timestamp (ms) until which DONE: is ignored
+        let ignoreDoneUntil = 0; // timestamp (ms) until which DONE is ignored (10s after button click)
+        let pollingStartedAt = 0; // when current run started (for 3min timeout)
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -334,14 +336,25 @@
             }
         }
 
+        function setButtonLocked(el, locked) {
+            if (!el) return;
+            el.disabled = locked;
+            if (locked) el.classList.add('btn-locked');
+            else el.classList.remove('btn-locked');
+        }
+
         function init() {
             renderProducts();
             setupEventListeners();
             loadScenarios();
             startStatusPolling();
-            // הודעה התחלתית: ממתין לפעולה עד שלחיצה על יצירת תמונה
+            // Default: Generate Image can glow when product+scene selected; Post & Telegram LOCKED
+            if (captionBtn) setButtonLocked(captionBtn, true);
+            if (telegramBtn) setButtonLocked(telegramBtn, true);
+            const finalT = document.getElementById('finalTelegram');
+            if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
             if (globalStatusBar) {
-                globalStatusBar.textContent = 'ממתין לפעולה...';
+                globalStatusBar.textContent = 'Waiting for action...';
                 globalStatusBar.classList.add('visible');
             }
         }
@@ -641,10 +654,21 @@
             el.className = 'status-bar visible ' + type;
         }
 
-        // --- Live dashboard status polling (Dashboard!A2) ---
+        // --- Live dashboard status polling (Victoria_Dashboard: J5 = status, B5 = image URL, D5 = caption) ---
         async function fetchDashboardStatus() {
             if (!WEBHOOK_STATUS || !globalStatusBar) return;
             try {
+                // 3-minute timeout: stop polling and show reset message
+                if (pollingStartedAt && (Date.now() - pollingStartedAt > 180000)) {
+                    if (statusPollingIntervalId) {
+                        clearInterval(statusPollingIntervalId);
+                        statusPollingIntervalId = null;
+                    }
+                    globalStatusBar.textContent = 'Timeout - Please Reset';
+                    globalStatusBar.classList.add('visible');
+                    return;
+                }
+
                 const res = await fetch(WEBHOOK_STATUS);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
@@ -655,100 +679,72 @@
                     data = JSON.parse(rawText);
                 } catch (parseErr) {
                     console.error('Status webhook did not return valid JSON:', parseErr);
-                    console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     return;
                 }
-                // Expect backend to return the content of Dashboard!J5 (primary) or fall back to other fields
-                const textRaw =
-                    data.J5 ||
-                    data.j5 ||
-                    data.status ||
-                    data.value ||
-                    data.statusText ||
-                    data.A2 ||
-                    '';
-                const text = (textRaw || '').toString();
-                if (!text) return;
+                // J5 = status cell (source of truth)
+                const textRaw = data.J5 || data.j5 || data.status || data.value || data.statusText || data.A2 || '';
+                const text = (textRaw || '').toString().trim();
+                if (text === '' && !userHasTriggeredGeneration) return;
 
                 const trimmedText = text.trim();
+                const isDone = trimmedText.toUpperCase() === 'DONE';
 
-                // Ignore stale DONE values during the 10s safety window right after a new run starts
-                if (trimmedText.toUpperCase() === 'DONE' && Date.now() < ignoreDoneUntil) {
-                    return;
-                }
+                // Ignore stale DONE for 10s after button click
+                if (isDone && Date.now() < ignoreDoneUntil) return;
 
-                // Track last seen status to avoid re-processing identical old values
-                if (text === lastSeenStatus) {
-                    return;
-                }
-                lastSeenStatus = text;
+                // Avoid re-processing same status
+                if (text === lastSeenStatus && isDone) return;
+                if (isDone) lastSeenStatus = text;
 
                 const handleCaptionPayload = (payloadText) => {
                     const cleanText = (payloadText || '').toString().trim();
                     if (!cleanText) return;
                     currentCaption = cleanText;
-
                     const captionArea = document.getElementById('captionText');
                     const captionContainer = document.getElementById('captionBox');
                     if (captionContainer) captionContainer.style.display = 'block';
                     if (captionArea) captionArea.value = cleanText;
-
-                    // Hide any spinners / shimmer – final text is ready
                     if (imageSpinner) imageSpinner.style.display = 'none';
                     if (resultImageEl) resultImageEl.classList.remove('shimmer');
-
                     globalStatusBar.textContent = '✓ Post Ready';
                     globalStatusBar.classList.add('visible');
                     const step2Status = document.getElementById('step2Status');
-                    if (step2Status) {
-                        showStatus(step2Status, '✓ Post Ready!', 'success');
-                    }
-
-                    // Enable Telegram only after currentCaption is populated
-                    if (captionBtn) {
-                        captionBtn.disabled = false;
-                        captionBtn.textContent = '📝 Generate Marketing Post';
-                    }
-                    if (telegramBtn) {
-                        telegramBtn.disabled = false;
-                    }
+                    if (step2Status) showStatus(step2Status, '✓ Post Ready', 'success');
+                    if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                    setButtonLocked(telegramBtn, false);
                     const finalTelegramBtn = document.getElementById('finalTelegram');
-                    if (finalTelegramBtn) finalTelegramBtn.disabled = false;
-
+                    if (finalTelegramBtn) { finalTelegramBtn.disabled = false; finalTelegramBtn.classList.remove('btn-locked'); }
                     setNextStepGlow(telegramBtn);
                 };
 
-                // J5 == 'DONE' indicates either image URL or caption ready in the dashboard
-                if (trimmedText.toUpperCase() === 'DONE' && userHasTriggeredGeneration) {
+                // J5 === 'DONE' → current process finished
+                if (isDone && userHasTriggeredGeneration) {
                     if (generationPhase === 'image') {
-                        // Image stage: get image URL from H5 (or similar) and show "Image Ready"
-                        const urlFromSheet =
-                            (data.H5 || data.h5 || data.image || data.imageUrl || '').toString().trim();
-                        if (urlFromSheet) {
-                            setGeneratedImageUrl(urlFromSheet);
-                        }
+                        // Image stage: URL from B5 only
+                        const urlFromSheet = (data.B5 || data.b5 || '').toString().trim();
+                        if (urlFromSheet) setGeneratedImageUrl(urlFromSheet);
                         globalStatusBar.textContent = '✓ Image Ready';
                         globalStatusBar.classList.add('visible');
-                        if (captionBtn) captionBtn.disabled = false;
+                        setButtonLocked(captionBtn, false);
                         generationPhase = 'caption';
                         setNextStepGlow(captionBtn);
+                        // Telegram stays locked until post is done
                     } else {
-                        // Post stage: get caption text from D5 only
-                        const captionFromD5 =
-                            (data.D5 || data.d5 || '').toString().trim();
-                        if (captionFromD5) {
-                            handleCaptionPayload(captionFromD5);
-                            generationPhase = 'idle';
-                        }
+                        // Post stage: caption from D5 only
+                        const captionFromD5 = (data.D5 || data.d5 || '').toString().trim();
+                        if (captionFromD5) handleCaptionPayload(captionFromD5);
+                        generationPhase = 'idle';
                     }
-                    if (statusPollingIntervalId) {
-                        clearInterval(statusPollingIntervalId);
-                        statusPollingIntervalId = null;
-                    }
+                    if (statusPollingIntervalId) { clearInterval(statusPollingIntervalId); statusPollingIntervalId = null; }
                     return;
                 }
 
-                // For all other J5 values, dashboard does not change global status bar
+                // J5 is anything else: display that text in status bar (never show raw URL)
+                if (userHasTriggeredGeneration && text) {
+                    const looksLikeUrl = /^https?:\/\//i.test(text);
+                    globalStatusBar.textContent = looksLikeUrl ? '✓ Ready' : text;
+                    globalStatusBar.classList.add('visible');
+                }
             } catch (err) {
                 console.error('Status polling error', err);
             }
@@ -765,21 +761,27 @@
 
         async function generateImage() {
             // ABSOLUTE STATE PURGE (must be first line)
-            currentCaption = null; currentImageUrl = null; captionText.value = '';
+            currentCaption = null; currentImageUrl = null; if (captionText) captionText.value = '';
             if (!selectedProduct) return;
+            // During action: disable button immediately, 10s ignore DONE, status = Processing...
+            generateBtn.disabled = true;
+            ignoreDoneUntil = Date.now() + 10000;
+            lastSeenStatus = '';
+            pollingStartedAt = Date.now();
+            if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
             userHasTriggeredGeneration = true;
             generationPhase = 'image';
-            ignoreDoneUntil = Date.now() + 10000; // ignore old DONE: for 10 seconds
             console.log('SENDING REQUEST FOR MODEL:', selectedModel);
 
-            // Clean reset: clear previous caption/state, hide old image, remove glow
+            // Clean reset: clear caption box, hide old image, remove glow, lock Post & Telegram
             setNextStepGlow(null);
             if (captionText) captionText.value = '';
             if (captionBox) captionBox.style.display = 'none';
-            if (statusBar) {
-                statusBar.textContent = 'Starting new session...';
-                statusBar.className = 'status-bar visible';
-            }
+            setButtonLocked(captionBtn, true);
+            setButtonLocked(telegramBtn, true);
+            const finalT = document.getElementById('finalTelegram');
+            if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
+            if (statusBar) { statusBar.textContent = ''; statusBar.className = 'status-bar'; }
             const step2Status = document.getElementById('step2Status');
             if (step2Status) {
                 step2Status.textContent = '';
@@ -790,9 +792,6 @@
                 imgEl.src = '';
                 imgEl.style.display = 'none';
             }
-            if (telegramBtn) telegramBtn.disabled = true;
-            const finalTelegramBtnInit = document.getElementById('finalTelegram');
-            if (finalTelegramBtnInit) finalTelegramBtnInit.disabled = true;
             if (resultImageEl) {
                 resultImageEl.classList.remove('shimmer');
             }
@@ -891,9 +890,7 @@
                                     if (url) {
                                         setGeneratedImageUrl(url);
                                         showStatus(statusBar, '✓ Image generated successfully', 'success');
-                                        captionBtn.disabled = false;
-                                        telegramBtn.disabled = false;
-                                        document.getElementById('finalTelegram').disabled = false;
+                                        setButtonLocked(captionBtn, false);
                                         generationPhase = 'caption';
                                         setNextStepGlow(captionBtn);
                                         return true;
@@ -918,9 +915,7 @@
                         if (directUrl) {
                             setGeneratedImageUrl(directUrl);
                             showStatus(statusBar, '✓ Image generated successfully', 'success');
-                            captionBtn.disabled = false;
-                            telegramBtn.disabled = false;
-                            document.getElementById('finalTelegram').disabled = false;
+                            setButtonLocked(captionBtn, false);
                             generationPhase = 'caption';
                             setNextStepGlow(captionBtn);
                         } else {
@@ -939,12 +934,18 @@
 
         async function generateCaption() {
             if (!selectedProduct) return;
-            const status = document.getElementById('step2Status');
-            showStatus(status, 'Generating Caption...');
+            // During action: disable button immediately, 10s ignore DONE, status = Processing...
             if (captionBtn) {
                 captionBtn.disabled = true;
+                captionBtn.classList.add('btn-locked');
                 captionBtn.textContent = 'Generating Caption...';
             }
+            ignoreDoneUntil = Date.now() + 10000;
+            lastSeenStatus = '';
+            if (!pollingStartedAt) pollingStartedAt = Date.now();
+            if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
+            const status = document.getElementById('step2Status');
+            showStatus(status, 'Generating Caption...');
             console.log('SENDING REQUEST FOR MODEL (caption):', selectedModel);
 
             // Format scene (Product Data + Prompt) for caption webhook
@@ -1010,15 +1011,16 @@
                     currentCaption = caption;
                     captionText.value = caption;
                     showStatus(status, '✓ Caption ready', 'success');
-                    document.getElementById('finalTelegram').disabled = false;
-                    if (telegramBtn) telegramBtn.disabled = false;
+                    setButtonLocked(telegramBtn, false);
+                    const ft = document.getElementById('finalTelegram');
+                    if (ft) { ft.disabled = false; ft.classList.remove('btn-locked'); }
                     setNextStepGlow(telegramBtn);
                 }
             } catch (err) {
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
             }
             if (captionBtn) {
-                captionBtn.disabled = false;
+                setButtonLocked(captionBtn, false);
                 captionBtn.textContent = '📝 Generate Marketing Post';
             }
         }
