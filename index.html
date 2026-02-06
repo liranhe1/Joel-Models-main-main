@@ -100,8 +100,12 @@
         .distribution-btns { display:flex; flex-direction:column; gap:10px; }
         .dist-btn { padding:14px 20px; border:none; font-family:inherit; font-size:1rem; font-weight:500; border-radius:8px; cursor:pointer; transition:all 0.3s; }
 
-        .status-bar { padding:6px 12px; min-height:28px; background:rgba(212,175,55,0.08); border-radius:4px; margin-top:8px; font-size:0.8rem; color:var(--gold); text-align:center; display:none; border-bottom:1px solid rgba(212,175,55,0.15); }
+        .status-bar { padding:6px 12px; min-height:28px; background:rgba(212,175,55,0.08); border-radius:4px; margin-top:8px; font-size:0.8rem; color:var(--gold); text-align:center; display:none; border-bottom:1px solid rgba(212,175,55,0.15); transition:opacity 0.5s ease; }
         .status-bar.visible { display:block; }
+        .status-bar.persona-shimmer .liran-name { background:linear-gradient(90deg,var(--gold),#f4e4bc,var(--gold)); background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:persona-shimmer 2.5s ease-in-out infinite; }
+        @keyframes persona-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .status-bar.persona-fade-in { animation:persona-fade-in 0.5s ease-out forwards; }
+        @keyframes persona-fade-in { from{opacity:0.6} to{opacity:1} }
         .status-bar.error { background:rgba(255,0,0,0.1); color:#ff6b6b; }
         .status-bar.success { background:rgba(80,200,120,0.1); color:var(--emerald); }
 
@@ -231,6 +235,19 @@
         const WEBHOOK_SCENARIOS = 'https://hook.eu2.make.com/sm6zjl2q1vjzsc4pu4xqd8wx318wpr73'; // e.g. 'https://hook.eu2.make.com/your-scenarios-webhook'
         const WEBHOOK_STATUS = 'https://hook.eu2.make.com/kayjcpyyjjx4rudihs3yz715jip8u1w7';    // e.g. 'https://hook.eu2.make.com/your-dashboard-status-webhook'
 
+        const VICTORIA_PHRASES = [
+            'לירן, בודקת שהתאורה בסטודיו מחמיאה לעגילים כמו שביקשת...',
+            'ויקטוריה מוסיפה אטיטיוד אורבני, לירן - תכין את הטלגרם, זה הולך להיות אש!',
+            'לירן, סבלנות... סטייל כזה לא בונים ברגע, אפילו לא בשבילך.',
+            'משייפת את הטקסט שיהיה חד כמו הסטייל של לירן.'
+        ];
+        const ALMA_PHRASES = [
+            'עלמא מחפשת זווית שקיעה שתפתיע אפילו אותך, לירן...',
+            'כותבת משהו מהלב, לירן. המילים צריכות להיות מדויקות כמו אמרלד.',
+            'מלטשת את התיאור, לירן - אנחנו יוצרים כאן רגע קסום.',
+            'לירן, עוד רגע וזה מוכן. היוקרה מחכה רק לך.'
+        ];
+
         const SCENARIO_CATEGORIES = {
             'daylight-urban': 'Daylight Urban',
             'glamour-night': 'Glamour Night',
@@ -276,7 +293,9 @@
         let lastSeenStatus = '';
         let ignoreDoneUntil = 0; // timestamp (ms) until which DONE is ignored (10s after button click)
         let lastJ5Content = '';  // last value seen in J5
-        let lastJ5ChangeAt = 0;  // when J5 last changed (reset on each change; timeout if unchanged for 8 min)
+        let lastJ5ChangeAt = 0;  // when J5 last changed (reset on each change; timeout if unchanged for 10 min)
+        let personaCycleIntervalId = null;
+        let personaPhraseIndex = 0;
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -335,6 +354,39 @@
                 img.src = normalizedUrl;
                 img.style.display = 'block';
             }
+        }
+
+        function wrapLiranWithShimmer(str) {
+            if (!str || !str.includes('לירן')) return str;
+            return str.replace(/לירן/g, '<span class="liran-name">לירן</span>');
+        }
+
+        function stopPersonaCycle() {
+            if (personaCycleIntervalId) {
+                clearInterval(personaCycleIntervalId);
+                personaCycleIntervalId = null;
+            }
+            if (globalStatusBar) globalStatusBar.classList.remove('persona-shimmer', 'persona-fade-in');
+        }
+
+        function showPersonaPhrase() {
+            if (!globalStatusBar) return;
+            const phrases = selectedModel === 'Alma' ? ALMA_PHRASES : VICTORIA_PHRASES;
+            const phrase = phrases[personaPhraseIndex % phrases.length];
+            personaPhraseIndex++;
+            globalStatusBar.classList.remove('persona-fade-in');
+            void globalStatusBar.offsetWidth;
+            globalStatusBar.classList.add('persona-shimmer', 'persona-fade-in', 'visible');
+            globalStatusBar.innerHTML = wrapLiranWithShimmer(phrase);
+            globalStatusBar.classList.remove('error', 'success');
+        }
+
+        function startPersonaCycle() {
+            stopPersonaCycle();
+            personaPhraseIndex = 0;
+            showPersonaPhrase();
+            const cycleMs = 5000 + Math.random() * 1000;
+            personaCycleIntervalId = setInterval(showPersonaPhrase, cycleMs);
         }
 
         function setButtonLocked(el, locked) {
@@ -680,8 +732,9 @@
                     lastJ5Content = text;
                     lastJ5ChangeAt = Date.now();
                 }
-                // Timeout only if J5 has stayed exactly the same for 8 consecutive minutes
-                if (userHasTriggeredGeneration && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > 8 * 60 * 1000)) {
+                // Timeout only if J5 has stayed exactly the same for 10 consecutive minutes
+                if (userHasTriggeredGeneration && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > 10 * 60 * 1000)) {
+                    stopPersonaCycle();
                     if (statusPollingIntervalId) {
                         clearInterval(statusPollingIntervalId);
                         statusPollingIntervalId = null;
@@ -705,6 +758,7 @@
                 const handleCaptionPayload = (payloadText) => {
                     const cleanText = (payloadText || '').toString().trim();
                     if (!cleanText) return;
+                    stopPersonaCycle();
                     currentCaption = cleanText;
                     const captionArea = document.getElementById('captionText');
                     const captionContainer = document.getElementById('captionBox');
@@ -725,6 +779,7 @@
 
                 // J5 === 'DONE' → current process finished
                 if (isDone && userHasTriggeredGeneration) {
+                    stopPersonaCycle();
                     if (generationPhase === 'image') {
                         // Image stage: URL from B5 only
                         const urlFromSheet = (data.B5 || data.b5 || '').toString().trim();
@@ -749,6 +804,7 @@
                 if (userHasTriggeredGeneration && text) {
                     const looksLikeUrl = /^https?:\/\//i.test(text);
                     globalStatusBar.textContent = looksLikeUrl ? '✓ Ready' : text;
+                    globalStatusBar.classList.remove('persona-shimmer');
                     globalStatusBar.classList.add('visible');
                 }
             } catch (err) {
@@ -776,6 +832,7 @@
             lastJ5Content = '';
             lastJ5ChangeAt = Date.now();
             if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
+            startPersonaCycle();
             userHasTriggeredGeneration = true;
             generationPhase = 'image';
             console.log('SENDING REQUEST FOR MODEL:', selectedModel);
@@ -933,6 +990,7 @@
                     }
                 }
             } catch (err) {
+                stopPersonaCycle();
                 showStatus(statusBar, '✗ Network error: ' + err.message, 'error');
             }
             generateBtn.disabled = false;
@@ -952,6 +1010,7 @@
             lastJ5Content = '';
             lastJ5ChangeAt = Date.now();
             if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
+            startPersonaCycle();
             const status = document.getElementById('step2Status');
             showStatus(status, 'Generating Caption...');
             console.log('SENDING REQUEST FOR MODEL (caption):', selectedModel);
@@ -1025,6 +1084,7 @@
                     setNextStepGlow(telegramBtn);
                 }
             } catch (err) {
+                stopPersonaCycle();
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
             }
             if (captionBtn) {
