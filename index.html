@@ -628,6 +628,9 @@
                         setGeneratedImageUrl(url);
                         globalStatusBar.textContent = '✓ Image Ready!';
                         globalStatusBar.classList.add('visible');
+                        if (captionBtn) {
+                            captionBtn.disabled = false;
+                        }
                         // Stop polling once image is ready to save credits
                         if (statusPollingIntervalId) {
                             clearInterval(statusPollingIntervalId);
@@ -794,8 +797,11 @@
         async function generateCaption() {
             if (!selectedProduct) return;
             const status = document.getElementById('step2Status');
-            showStatus(status, 'יוצר קפשן...');
-            captionBtn.disabled = true;
+            showStatus(status, 'Generating Caption...');
+            if (captionBtn) {
+                captionBtn.disabled = true;
+                captionBtn.textContent = 'Generating Caption...';
+            }
 
             // Format scene (Product Data + Prompt) for caption webhook
             const sceneRaw = selectedScene || '';
@@ -864,7 +870,10 @@
             } catch (err) {
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
             }
-            captionBtn.disabled = false;
+            if (captionBtn) {
+                captionBtn.disabled = false;
+                captionBtn.textContent = '📝 Generate Marketing Post';
+            }
         }
 
         async function sendToTelegram() {
