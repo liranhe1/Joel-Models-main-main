@@ -307,16 +307,19 @@
                 let rowsProcessed = 0;
                 const allScenes = [];
 
-                // שמות שדות מדויקים: 'Vibe (A)' ו-'Category (F)' כולל הסוגריים
+                // מיפוי חדש: Make מחזיר מפתחות מספריים – "0" = שם סצנה, "5" = קטגוריה
                 scenariosArray.forEach((item, idx) => {
                     if (!item || typeof item !== 'object') return;
 
-                    const sceneStr = (item['Vibe (A)'] != null ? String(item['Vibe (A)']).trim() : '');
-                    const catStr = (item['Category (F)'] != null ? String(item['Category (F)']).trim() : '');
+                    // יציבות: מוסיפים סצנה רק אם השדה "0" (שם) קיים
+                    const hasSceneName = item.hasOwnProperty('0') || item.hasOwnProperty(0);
+                    if (!hasSceneName) return;
 
-                    // סצנה בלי קטגוריה – לא מציגים
-                    if (!catStr) return;
+                    const sceneStr = (item['0'] != null ? String(item['0']).trim() : '') || (item[0] != null ? String(item[0]).trim() : '');
+                    const catStr = (item['5'] != null ? String(item['5']).trim() : '') || (item[5] != null ? String(item[5]).trim() : '');
+
                     if (!sceneStr) return;
+                    if (!catStr) return;
 
                     // דילוג על שורת כותרת אם קיימת
                     const lowerScene = sceneStr.toLowerCase();
@@ -587,16 +590,18 @@
                         console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     }
 
-                    // תיקון התמונה: חילוץ הקישור מה-Response של סנריו B והצגה באתר
-                    const url = data && (
+                    // הצגת תמונה: חילוץ ה-URL שחוזר מסנריו B (כולל מפתחות מספריים) והצגה + מעבר אוטומטי ללשונית 2
+                    const urlRaw = data && (
                         data.imageUrl || data.image_url || data.url ||
-                        (data.output && (data.output.url || data.output.imageUrl || data.output.image_url)) ||
-                        (data.data && (data.data.url || data.data.imageUrl)) ||
+                        data['0'] || data[0] ||
+                        (data.output && (data.output.url || data.output.imageUrl || data.output['0'])) ||
+                        (data.data && (data.data.url || data.data.imageUrl || data.data['0'])) ||
                         (data.result && (data.result.url || data.result.imageUrl)) ||
-                        (Array.isArray(data) && data[0] && (data[0].url || data[0].imageUrl))
+                        (Array.isArray(data) && data[0] && (typeof data[0] === 'string' ? data[0] : (data[0].url || data[0].imageUrl || data[0]['0'])))
                     );
-                    const imageUrl = typeof url === 'string' ? url : (url && (url.url || url.imageUrl));
-                    const finalUrl = typeof imageUrl === 'string' ? imageUrl : null;
+                    let finalUrl = null;
+                    if (typeof urlRaw === 'string' && urlRaw.trim()) finalUrl = urlRaw.trim();
+                    else if (urlRaw && typeof urlRaw === 'object') finalUrl = (urlRaw.url || urlRaw.imageUrl || urlRaw['0']) ? String(urlRaw.url || urlRaw.imageUrl || urlRaw['0']).trim() : null;
 
                     if (finalUrl) {
                         console.log('Image URL received:', finalUrl);
@@ -633,7 +638,7 @@
         async function generateCaption() {
             if (!selectedProduct) return;
             const status = document.getElementById('step2Status');
-            showStatus(status, '📝 Generating marketing text...');
+            showStatus(status, 'יוצר קפשן...');
             captionBtn.disabled = true;
 
             // Format scene (Product Data + Prompt) for caption webhook
