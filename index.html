@@ -325,12 +325,35 @@
                             scenariosArray.push(el);
                         }
                     });
-                    // אם יש רק איבר אחד והוא מחרוזת – ניסיון לפרסום כמערך מלא (מערך כמחרוזת)
+                    // אם יש רק איבר אחד והוא מחרוזת – ניסיון לפרסום: מערך כמחרוזת, או אובייקט בודד, או שרשרת אובייקטים
                     if (scenariosArray.length === 0 && raw.length === 1 && typeof raw[0] === 'string') {
+                        var s = raw[0].trim();
                         try {
-                            const parsed = JSON.parse(raw[0]);
+                            var parsed = JSON.parse(s);
                             scenariosArray = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
-                        } catch (e) { /* נשאר מערך ריק */ }
+                        } catch (e1) {
+                            try {
+                                var start = s.indexOf('[');
+                                var end = s.lastIndexOf(']');
+                                if (start !== -1 && end !== -1 && end > start) {
+                                    parsed = JSON.parse(s.substring(start, end + 1));
+                                    scenariosArray = Array.isArray(parsed) ? parsed : [];
+                                }
+                            } catch (e2) { }
+                            if (scenariosArray.length === 0 && (s.indexOf('"0"') !== -1 || s.indexOf('"5"') !== -1)) {
+                                var parts = s.split(/\}\s*,\s*\{/);
+                                parts.forEach(function (part) {
+                                    part = part.trim();
+                                    if (!part) return;
+                                    if (part.charAt(0) !== '{') part = '{' + part;
+                                    if (part.charAt(part.length - 1) !== '}') part = part + '}';
+                                    try {
+                                        var obj = JSON.parse(part);
+                                        if (obj && typeof obj === 'object' && !Array.isArray(obj)) scenariosArray.push(obj);
+                                    } catch (e3) { }
+                                });
+                            }
+                        }
                     }
                 }
                 if (!Array.isArray(scenariosArray) || scenariosArray.length === 0) {
