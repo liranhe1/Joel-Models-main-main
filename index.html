@@ -293,14 +293,36 @@
 
                 console.log('RAW_FROM_MAKE:', data);
 
-                // מיפוי נתונים: עוברים רק על המערך תחת data.scenes (Create JSON ב-Make)
-                if (!data || typeof data !== 'object' || !Array.isArray(data.scenes)) {
+                // נרמול data.scenes: Make לפעמים מחזיר מערך עטוף (length=1) או מחרוזת – מפיקים מערך אובייקטים
+                if (!data || typeof data !== 'object') {
                     console.error('Expected payload: { scenes: [...] }. Received:', data);
-                    showStatus(statusBar, '✗ Scenarios: expected data.scenes array', 'error');
+                    showStatus(statusBar, '✗ Scenarios: expected data.scenes', 'error');
                     return;
                 }
-                const scenariosArray = data.scenes;
-                console.log('data.scenes length:', scenariosArray.length);
+                let scenariosArray = null;
+                const raw = data.scenes;
+                if (typeof raw === 'string') {
+                    try { scenariosArray = JSON.parse(raw); } catch (e) { scenariosArray = null; }
+                } else if (Array.isArray(raw) && raw.length === 1) {
+                    const first = raw[0];
+                    if (typeof first === 'string') {
+                        try { scenariosArray = JSON.parse(first); } catch (e) { scenariosArray = raw; }
+                    } else if (Array.isArray(first)) {
+                        scenariosArray = first;
+                    } else if (first && typeof first === 'object' && !Array.isArray(first)) {
+                        scenariosArray = [first];
+                    } else {
+                        scenariosArray = raw;
+                    }
+                } else if (Array.isArray(raw)) {
+                    scenariosArray = raw;
+                }
+                if (!Array.isArray(scenariosArray)) {
+                    console.error('Could not get array from data.scenes. raw type:', typeof raw, 'raw:', raw);
+                    showStatus(statusBar, '✗ Scenarios: invalid data.scenes format', 'error');
+                    return;
+                }
+                console.log('data.scenes length (after normalize):', scenariosArray.length);
 
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
 
