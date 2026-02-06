@@ -255,6 +255,35 @@
         const globalStatusBar = document.getElementById('globalStatus');
         let userHasTriggeredGeneration = false;
 
+        function getImageUrl(obj) {
+            if (!obj) return null;
+            if (typeof obj === 'string' && obj.trim()) return obj.trim();
+            const u = obj.url || obj.imageUrl || obj.image_url || obj["0"] || obj[0];
+            return (u != null && String(u).trim()) ? String(u).trim() : null;
+        }
+
+        function setGeneratedImageUrl(url) {
+            if (!url) return;
+            const container = document.getElementById('resultImage');
+            const spinner = document.getElementById('imageSpinner');
+            const placeholder = document.getElementById('imagePlaceholder');
+            if (container) {
+                container.classList.remove('shimmer');
+                if (spinner) spinner.style.display = 'none';
+                if (placeholder) placeholder.style.display = 'none';
+                let img = document.getElementById('generatedImage');
+                if (!img) {
+                    img = document.createElement('img');
+                    img.id = 'generatedImage';
+                    img.alt = 'Generated image';
+                    img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
+                    container.appendChild(img);
+                }
+                img.src = url;
+                img.style.display = 'block';
+            }
+        }
+
         function init() {
             renderProducts();
             setupEventListeners();
@@ -656,54 +685,62 @@
                     showStatus(statusBar, '✗ Error sending image request', 'error');
                 } else {
                     let data = null;
-                    let rawText;
-                    try {
-                        rawText = await res.text();
-                        console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
-                        data = JSON.parse(rawText);
-                    } catch (e) {
-                        console.warn('Image webhook did not return JSON or parsing failed.', e);
-                        console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
-                    }
+                    let rawText = await res.text();
+                    const rawTrimmed = (rawText || '').trim();
+                    console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
 
-                    // חילוץ תמונה: מושכים את ה-URL מסנריו B – מפתח מספרי או שם שדה, ומציגים ב-UI
-                    function getImageUrl(obj) {
-                        if (!obj) return null;
-                        if (typeof obj === 'string' && obj.trim()) return obj.trim();
-                        const u = obj.url || obj.imageUrl || obj.image_url || obj["0"] || obj[0];
-                        return (u != null && String(u).trim()) ? String(u).trim() : null;
-                    }
-                    const finalUrl = data && (
-                        getImageUrl(data) ||
-                        (data.output && getImageUrl(data.output)) ||
-                        (data.data && getImageUrl(data.data)) ||
-                        (data.result && getImageUrl(data.result)) ||
-                        (Array.isArray(data) && data.length && getImageUrl(data[0]))
-                    );
-
-                    if (finalUrl) {
-                        console.log('Image URL received:', finalUrl);
-                        if (resultImageEl) {
-                            resultImageEl.classList.remove('shimmer');
-                            if (imageSpinner) imageSpinner.style.display = 'none';
-                            if (imagePlaceholder) imagePlaceholder.style.display = 'none';
-                            let img = document.getElementById('generatedImage');
-                            if (!img) {
-                                img = document.createElement('img');
-                                img.id = 'generatedImage';
-                                img.alt = 'Generated image';
-                                img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
-                                resultImageEl.appendChild(img);
-                            }
-                            img.src = finalUrl;
-                            img.style.display = 'block';
-                        }
-                        showStatus(statusBar, '✓ Image generated successfully', 'success');
-                        captionBtn.disabled = false;
-                        telegramBtn.disabled = false;
-                        document.getElementById('finalTelegram').disabled = false;
-                    } else {
+                    if (rawTrimmed === 'Accepted') {
+                        console.log('Request accepted, waiting for Dashboard update');
                         showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
+                        setTimeout(async function () {
+                            if (!WEBHOOK_STATUS) return;
+                            try {
+                                const statusRes = await fetch(WEBHOOK_STATUS);
+                                if (!statusRes.ok) return;
+                                const statusText = await statusRes.text();
+                                let statusData = null;
+                                try { statusData = JSON.parse(statusText); } catch (e) { return; }
+                                const url = statusData && (
+                                    getImageUrl(statusData) ||
+                                    (statusData.output && getImageUrl(statusData.output)) ||
+                                    (statusData.data && getImageUrl(statusData.data)) ||
+                                    (statusData.result && getImageUrl(statusData.result)) ||
+                                    (Array.isArray(statusData) && statusData.length && getImageUrl(statusData[0]))
+                                );
+                                if (url) {
+                                    console.log('Image URL from dashboard:', url);
+                                    setGeneratedImageUrl(url);
+                                    showStatus(statusBar, '✓ Image generated successfully', 'success');
+                                    captionBtn.disabled = false;
+                                    telegramBtn.disabled = false;
+                                    document.getElementById('finalTelegram').disabled = false;
+                                }
+                            } catch (err) { console.warn('Dashboard fetch for image URL failed', err); }
+                        }, 10000);
+                    } else {
+                        try {
+                            data = JSON.parse(rawText);
+                        } catch (e) {
+                            console.warn('Image webhook did not return JSON or parsing failed.', e);
+                            console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
+                        }
+                        const finalUrl = data && (
+                            getImageUrl(data) ||
+                            (data.output && getImageUrl(data.output)) ||
+                            (data.data && getImageUrl(data.data)) ||
+                            (data.result && getImageUrl(data.result)) ||
+                            (Array.isArray(data) && data.length && getImageUrl(data[0]))
+                        );
+                        if (finalUrl) {
+                            console.log('Image URL received:', finalUrl);
+                            setGeneratedImageUrl(finalUrl);
+                            showStatus(statusBar, '✓ Image generated successfully', 'success');
+                            captionBtn.disabled = false;
+                            telegramBtn.disabled = false;
+                            document.getElementById('finalTelegram').disabled = false;
+                        } else {
+                            showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
+                        }
                     }
                 }
             } catch (err) {
