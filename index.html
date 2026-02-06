@@ -293,83 +293,45 @@
 
                 console.log('RAW_FROM_MAKE:', data);
 
-                // Handle new JSON structure: {"scenes": [array]}
-                let scenariosArray;
-                if (data && typeof data === 'object' && 'scenes' in data && Array.isArray(data.scenes)) {
-                    scenariosArray = data.scenes;
-                    console.log('Parsed new structure: found scenes array with', scenariosArray.length, 'items');
-                    if (scenariosArray.length > 0 && typeof scenariosArray[0] === 'object' && !Array.isArray(scenariosArray[0])) {
-                        console.log('Sample row keys:', Object.keys(scenariosArray[0]));
-                    }
-                } else if (Array.isArray(data)) {
-                    scenariosArray = data;
-                    console.log('Using legacy structure: direct array with', scenariosArray.length, 'items');
-                } else {
-                    console.error('Unexpected scenarios payload. Expected {"scenes": [...]} or [...]. Received:', data);
-                    showStatus(statusBar, '✗ Scenarios: unexpected data structure', 'error');
+                // מיפוי נתונים: עוברים רק על המערך תחת data.scenes (Create JSON ב-Make)
+                if (!data || typeof data !== 'object' || !Array.isArray(data.scenes)) {
+                    console.error('Expected payload: { scenes: [...] }. Received:', data);
+                    showStatus(statusBar, '✗ Scenarios: expected data.scenes array', 'error');
                     return;
                 }
+                const scenariosArray = data.scenes;
+                console.log('data.scenes length:', scenariosArray.length);
 
-                // Reset groups
                 Object.keys(scenariosByCategory).forEach(key => { scenariosByCategory[key] = []; });
 
                 let rowsProcessed = 0;
                 const allScenes = [];
 
-                // Flexible: get scene name from Vibe (A), vibe, Vibe, or first field
-                function getSceneName(item) {
-                    if (Array.isArray(item)) return (item[0] != null ? String(item[0]).trim() : '');
-                    if (!item || typeof item !== 'object') return '';
-                    const v = item['Vibe (A)'] ?? item['vibe'] ?? item['Vibe'];
-                    if (v != null && String(v).trim()) return String(v).trim();
-                    const vals = Object.values(item);
-                    return (vals[0] != null ? String(vals[0]).trim() : '');
-                }
-                // Flexible: get category from Category (F), category, Category, or sixth field
-                function getCategory(item) {
-                    if (Array.isArray(item)) return (item[5] != null ? String(item[5]).trim() : '');
-                    if (!item || typeof item !== 'object') return '';
-                    const v = item['Category (F)'] ?? item['category'] ?? item['Category'];
-                    if (v != null && String(v).trim()) return String(v).trim();
-                    const vals = Object.values(item);
-                    return (vals[5] != null ? String(vals[5]).trim() : '');
-                }
-
+                // שמות שדות מדויקים: 'Vibe (A)' ו-'Category (F)' כולל הסוגריים
                 scenariosArray.forEach((item, idx) => {
-                    if (!item) return;
+                    if (!item || typeof item !== 'object') return;
 
-                    const sceneStr = getSceneName(item);
-                    const catStr = getCategory(item);
+                    const sceneStr = (item['Vibe (A)'] != null ? String(item['Vibe (A)']).trim() : '');
+                    const catStr = (item['Category (F)'] != null ? String(item['Category (F)']).trim() : '');
 
-                    // Skip header row if present
+                    // סצנה בלי קטגוריה – לא מציגים
+                    if (!catStr) return;
+                    if (!sceneStr) return;
+
+                    // דילוג על שורת כותרת אם קיימת
                     const lowerScene = sceneStr.toLowerCase();
                     const lowerCat = catStr.toLowerCase();
-                    if (
-                        idx === 0 &&
-                        (
-                            lowerScene.includes('vibe') ||
-                            lowerScene.includes('scene') ||
-                            lowerScene.includes('name') ||
-                            lowerCat.includes('category')
-                        )
-                    ) {
-                        return;
-                    }
+                    if (idx === 0 && (lowerScene.includes('vibe') || lowerScene.includes('scene') || lowerScene.includes('name') || lowerCat.includes('category'))) return;
 
-                    if (!sceneStr) return;
-                    if (!catStr) return;
-
-                    // Match category flexibly (exact or case-insensitive)
                     const catKey = Object.keys(SCENARIO_CATEGORIES)
-                        .find(key => SCENARIO_CATEGORIES[key] === catStr || SCENARIO_CATEGORIES[key].toLowerCase() === catStr.toLowerCase());
+                        .find(k => SCENARIO_CATEGORIES[k] === catStr || SCENARIO_CATEGORIES[k].toLowerCase() === catStr.toLowerCase());
                     if (!catKey) {
-                        console.warn('Scenarios: unknown category at row', idx, catStr, item);
+                        console.warn('Unknown category at row', idx, catStr);
                         return;
                     }
 
                     const value = sceneStr;
                     const label = sceneStr;
-
                     scenariosByCategory[catKey].push({ value, label });
                     allScenes.push({ name: sceneStr, category: catStr, value, label });
                     rowsProcessed++;
@@ -381,21 +343,34 @@
                 if (!rowsProcessed) {
                     showStatus(statusBar, '✗ Scenarios: no valid rows after mapping', 'error');
                 } else if (statusBar) {
-                    // Clear any previous error message once data is successfully loaded
                     statusBar.textContent = '';
                     statusBar.className = 'status-bar';
                 }
 
-                // Mark as loaded to prevent duplicate calls
                 scenariosLoaded = true;
 
-                // Force-refresh dropdown menus using the currently active category (if any)
-                const activeCatBtn = document.querySelector('.scene-cat-btn.active');
-                if (activeCatBtn) {
-                    activeCatBtn.click();
+                // ניקוי UI: ממולאות ארבע הקטגוריות – ממלאים את ה-dropdown של כל קטגוריה
+                const catKeys = ['daylight-urban', 'glamour-night', 'luxury-vacation', 'quiet-luxury'];
+                document.querySelectorAll('.scene-cat-btn').forEach((btn, i) => {
+                    const catKey = catKeys[i];
+                    const scenes = scenariosByCategory[catKey] || [];
+                    // כל קטגוריה כבר מקושרת ל-scenariosByCategory; ברגע שלוחצים – ה-select מתמלא
+                });
+                // בוחרים את הקטגוריה הראשונה שיש בה סצנות וממלאים את ה-select
+                const firstCatWithScenes = catKeys.find(k => (scenariosByCategory[k] || []).length > 0);
+                if (firstCatWithScenes) {
+                    document.querySelectorAll('.scene-cat-btn').forEach(b => b.classList.remove('active'));
+                    const firstBtn = document.querySelector(`.scene-cat-btn[data-cat="${firstCatWithScenes}"]`);
+                    if (firstBtn) {
+                        firstBtn.classList.add('active');
+                        const scenes = scenariosByCategory[firstCatWithScenes];
+                        sceneSelect.disabled = false;
+                        sceneSelect.innerHTML = '<option value="">Select scene...</option>' +
+                            scenes.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+                    }
                 } else {
                     sceneSelect.disabled = true;
-                    sceneSelect.innerHTML = '<option value="">Select category first...</option>';
+                    sceneSelect.innerHTML = '<option value="">No scenes loaded</option>';
                 }
             } catch (err) {
                 console.error('Failed to load scenarios', err);
@@ -540,7 +515,7 @@
 
         async function generateImage() {
             if (!selectedProduct) return;
-            // Auto-tab switch: go to Copywriter (Step 2) immediately on click to show progress/result
+            // מעבר לשונית: בלחיצה על 'יצירת תמונה' עוברים אוטומטית ללשונית השנייה (Copywriter / 2)
             document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
             document.querySelector('[data-step="2"]').classList.add('active');
@@ -612,27 +587,32 @@
                         console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
                     }
 
-                    // Extract image URL from Make response (multiple possible keys)
-                    const url = (data && (data.imageUrl || data.image_url || data.url ||
-                        (data.output && (data.output.url || data.output.imageUrl || data.output.image_url))));
-                    if (url && typeof url === 'string') {
-                        console.log('Image URL received:', url);
+                    // תיקון התמונה: חילוץ הקישור מה-Response של סנריו B והצגה באתר
+                    const url = data && (
+                        data.imageUrl || data.image_url || data.url ||
+                        (data.output && (data.output.url || data.output.imageUrl || data.output.image_url)) ||
+                        (data.data && (data.data.url || data.data.imageUrl)) ||
+                        (data.result && (data.result.url || data.result.imageUrl)) ||
+                        (Array.isArray(data) && data[0] && (data[0].url || data[0].imageUrl))
+                    );
+                    const imageUrl = typeof url === 'string' ? url : (url && (url.url || url.imageUrl));
+                    const finalUrl = typeof imageUrl === 'string' ? imageUrl : null;
+
+                    if (finalUrl) {
+                        console.log('Image URL received:', finalUrl);
                         if (resultImageEl) {
                             resultImageEl.classList.remove('shimmer');
                             if (imageSpinner) imageSpinner.style.display = 'none';
-                            if (imagePlaceholder) {
-                                imagePlaceholder.style.display = 'none';
-                            }
+                            if (imagePlaceholder) imagePlaceholder.style.display = 'none';
                             let img = document.getElementById('generatedImage');
                             if (!img) {
                                 img = document.createElement('img');
                                 img.id = 'generatedImage';
                                 img.alt = 'Generated image';
                                 img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
-                                resultImageEl.style.position = 'relative';
                                 resultImageEl.appendChild(img);
                             }
-                            img.src = url;
+                            img.src = finalUrl;
                             img.style.display = 'block';
                         }
                         showStatus(statusBar, '✓ Image generated successfully', 'success');
