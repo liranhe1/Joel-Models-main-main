@@ -269,8 +269,11 @@
         // Tracks where we are in a generation run: 'idle' | 'image' | 'caption'
         let generationPhase = 'idle';
         // Global state for current result
-        let currentCaption = '';
-        let currentImageUrl = '';
+        let currentCaption = null;
+        let currentImageUrl = null;
+        // Polling safety
+        let lastSeenStatus = '';
+        let ignoreDoneUntil = 0; // timestamp (ms) until which DONE: is ignored
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -656,7 +659,7 @@
                     return;
                 }
                 // Expect backend to return the content of Dashboard!J5 (primary) or fall back to other fields
-                const text =
+                const textRaw =
                     data.J5 ||
                     data.j5 ||
                     data.status ||
@@ -664,7 +667,19 @@
                     data.statusText ||
                     data.A2 ||
                     '';
+                const text = (textRaw || '').toString();
                 if (!text) return;
+
+                // Ignore stale DONE: values during the 10s safety window right after a new run starts
+                if (text.startsWith('DONE:') && Date.now() < ignoreDoneUntil) {
+                    return;
+                }
+
+                // Track last seen status to avoid re-processing identical old values
+                if (text === lastSeenStatus) {
+                    return;
+                }
+                lastSeenStatus = text;
 
                 const handleCaptionPayload = (payloadText) => {
                     const cleanText = (payloadText || '').toString().trim();
@@ -742,7 +757,17 @@
                     }
                     return;
                 }
-                // מעדכן את ה-status רק אחרי שהמשתמש הפעיל יצירת תמונה (לא מציג "התמונה מוכנה" לפני פעולה)
+
+                // Processing state: keep spinner visible, no Post Ready yet
+                if (/processing/i.test(text) || text.includes('מתחילה לעבוד')) {
+                    if (imageSpinner) imageSpinner.style.display = 'block';
+                    if (resultImageEl) resultImageEl.classList.add('shimmer');
+                    globalStatusBar.textContent = text;
+                    globalStatusBar.classList.add('visible');
+                    return;
+                }
+
+                // Default status echo only after user started a run
                 if (userHasTriggeredGeneration) {
                     globalStatusBar.textContent = text;
                     globalStatusBar.classList.add('visible');
@@ -762,19 +787,21 @@
         }
 
         async function generateImage() {
+            // ABSOLUTE STATE PURGE (must be first line)
+            currentCaption = null; currentImageUrl = null; captionText.value = '';
             if (!selectedProduct) return;
             userHasTriggeredGeneration = true;
             generationPhase = 'image';
+            ignoreDoneUntil = Date.now() + 10000; // ignore old DONE: for 10 seconds
+            console.log('SENDING REQUEST FOR MODEL:', selectedModel);
 
             // Clean reset: clear previous caption/state, hide old image, remove glow
-            currentCaption = '';
-            currentImageUrl = '';
             setNextStepGlow(null);
             if (captionText) captionText.value = '';
             if (captionBox) captionBox.style.display = 'none';
             if (statusBar) {
-                statusBar.textContent = '';
-                statusBar.className = 'status-bar';
+                statusBar.textContent = 'Starting new session...';
+                statusBar.className = 'status-bar visible';
             }
             const step2Status = document.getElementById('step2Status');
             if (step2Status) {
@@ -941,6 +968,7 @@
                 captionBtn.disabled = true;
                 captionBtn.textContent = 'Generating Caption...';
             }
+            console.log('SENDING REQUEST FOR MODEL (caption):', selectedModel);
 
             // Format scene (Product Data + Prompt) for caption webhook
             const sceneRaw = selectedScene || '';
@@ -1023,6 +1051,7 @@
             const status = document.getElementById('step2Status');
             showStatus(status, '🚀 Sending to Telegram...');
             telegramBtn.disabled = true;
+            console.log('SENDING REQUEST FOR MODEL (telegram):', selectedModel);
 
             // Format scene as 'Category - Scene Name' instead of comma-separated
             const formattedScene = selectedScene.includes(',') 
@@ -1056,8 +1085,14 @@
 
             try {
                 const res = await fetch(WEBHOOK_CAPTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                if (res.ok) { showStatus(status, '✓ Sent to Telegram!', 'success'); }
-                else { showStatus(status, '✗ Error sending to Telegram', 'error'); }
+                if (res.ok) {
+                    showStatus(status, '✓ Sent to Telegram!', 'success');
+                    // Data cleanup: mark run as complete and ignore any stale statuses
+                    lastSeenStatus = '';
+                    generationPhase = 'idle';
+                } else {
+                    showStatus(status, '✗ Error sending to Telegram', 'error');
+                }
             } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
             telegramBtn.disabled = false;
         }
