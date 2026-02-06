@@ -268,6 +268,9 @@
         let statusPollingIntervalId = null;
         // Tracks where we are in a generation run: 'idle' | 'image' | 'caption'
         let generationPhase = 'idle';
+        // Global state for current result
+        let currentCaption = '';
+        let currentImageUrl = '';
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -305,6 +308,7 @@
         function setGeneratedImageUrl(url) {
             if (!url) return;
             const normalizedUrl = normalizeImageUrl(url);
+            currentImageUrl = normalizedUrl;
             const container = document.getElementById('resultImage');
             const spinner = document.getElementById('imageSpinner');
             const placeholder = document.getElementById('imagePlaceholder');
@@ -663,16 +667,27 @@
                 if (!text) return;
 
                 const handleCaptionPayload = (payloadText) => {
+                    const cleanText = (payloadText || '').toString().trim();
+                    if (!cleanText) return;
+                    currentCaption = cleanText;
+
                     const captionArea = document.getElementById('captionText');
                     const captionContainer = document.getElementById('captionBox');
                     if (captionContainer) captionContainer.style.display = 'block';
-                    if (captionArea) captionArea.value = payloadText;
+                    if (captionArea) captionArea.value = cleanText;
+
+                    // Hide any spinners / shimmer – final text is ready
+                    if (imageSpinner) imageSpinner.style.display = 'none';
+                    if (resultImageEl) resultImageEl.classList.remove('shimmer');
+
                     globalStatusBar.textContent = '✓ Post Ready!';
                     globalStatusBar.classList.add('visible');
                     const step2Status = document.getElementById('step2Status');
                     if (step2Status) {
                         showStatus(step2Status, '✓ Post Ready!', 'success');
                     }
+
+                    // Enable Telegram only after currentCaption is populated
                     if (captionBtn) {
                         captionBtn.disabled = false;
                         captionBtn.textContent = '📝 Generate Marketing Post';
@@ -682,12 +697,14 @@
                     }
                     const finalTelegramBtn = document.getElementById('finalTelegram');
                     if (finalTelegramBtn) finalTelegramBtn.disabled = false;
+
                     setNextStepGlow(telegramBtn);
                 };
 
                 // New format: DONE: <payload>  => can be image URL or final caption/post text
                 if (text.startsWith('DONE:')) {
-                    const payload = text.replace('DONE: ', '').trim();
+                    // Extract everything after the first ':' (handles additional colons in the text)
+                    const payload = text.substring(text.indexOf(':') + 1).trim();
                     if (payload) {
                         const looksLikeUrl = /^https?:\/\//i.test(payload);
                         if (looksLikeUrl) {
@@ -749,7 +766,9 @@
             userHasTriggeredGeneration = true;
             generationPhase = 'image';
 
-            // Clean reset: clear previous caption, hide old image, remove glow
+            // Clean reset: clear previous caption/state, hide old image, remove glow
+            currentCaption = '';
+            currentImageUrl = '';
             setNextStepGlow(null);
             if (captionText) captionText.value = '';
             if (captionBox) captionBox.style.display = 'none';
@@ -767,6 +786,9 @@
                 imgEl.src = '';
                 imgEl.style.display = 'none';
             }
+            if (telegramBtn) telegramBtn.disabled = true;
+            const finalTelegramBtnInit = document.getElementById('finalTelegram');
+            if (finalTelegramBtnInit) finalTelegramBtnInit.disabled = true;
             if (resultImageEl) {
                 resultImageEl.classList.remove('shimmer');
             }
@@ -980,9 +1002,11 @@
                         (data && (data.caption || data.text || data.captionText)) ||
                         'Marketing text is being generated...';
 
+                    currentCaption = caption;
                     captionText.value = caption;
                     showStatus(status, '✓ Caption ready', 'success');
                     document.getElementById('finalTelegram').disabled = false;
+                    if (telegramBtn) telegramBtn.disabled = false;
                     setNextStepGlow(telegramBtn);
                 }
             } catch (err) {
@@ -1011,9 +1035,9 @@
                 modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
             }
 
-            const captionValue = (captionText && captionText.value) || '';
+            const captionValue = currentCaption || (captionText && captionText.value) || '';
             const imgEl = document.getElementById('generatedImage');
-            const imageUrl = imgEl && imgEl.src ? imgEl.src : '';
+            const imageUrl = currentImageUrl || (imgEl && imgEl.src ? imgEl.src : '');
 
             const payload = {
                 source: 'Web_App',
