@@ -524,7 +524,10 @@
                 });
             });
 
-            sceneSelect.addEventListener('change', () => { selectedScene = sceneSelect.value; updateGenerateBtn(); });
+            sceneSelect.addEventListener('change', function () {
+                selectedScene = sceneSelect.value;
+                updateGenerateBtn();
+            });
             generateBtn.addEventListener('click', generateImage);
             if (captionBtn) {
                 captionBtn.addEventListener('click', function(e) { e.preventDefault(); generateCaption(); });
@@ -533,11 +536,9 @@
             document.getElementById('finalTelegram').addEventListener('click', sendToTelegram);
         }
 
-        // Emergency UI unlock: enable Generate even when no scenes loaded (for sync testing)
+        // Unlock: Generate Image enabled when a product is selected (no mandatory scene dependency)
         function updateGenerateBtn() {
-            const hasAnyScenes = Object.values(scenariosByCategory).some(arr => arr.length > 0);
-            const needScene = hasAnyScenes ? !!selectedScene : false;
-            generateBtn.disabled = !selectedProduct || needScene;
+            generateBtn.disabled = !selectedProduct;
         }
 
         function showStatus(el, msg, type = '') {
@@ -608,10 +609,12 @@
             }
             if (resultImageEl) resultImageEl.classList.add('shimmer');
 
-            // Format scene (allow empty when no scenes loaded - emergency unlock for testing)
-            const formattedScene = (selectedScene || '').includes(',')
-                ? (selectedScene || '').replace(',', ' - ')
-                : (selectedScene || '');
+            // Verify payload: pull current value from #sceneSelect right before sending
+            const sceneSelectEl = document.getElementById('sceneSelect');
+            const currentSceneValue = sceneSelectEl ? (sceneSelectEl.value || '') : (selectedScene || '');
+            const formattedScene = currentSceneValue.includes(',')
+                ? currentSceneValue.replace(',', ' - ')
+                : currentSceneValue;
 
             // Ensure Alma's reference image URL is correct
             let modelUrl = selectedProduct.modelUrl;
