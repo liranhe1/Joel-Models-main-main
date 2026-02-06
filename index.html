@@ -621,17 +621,42 @@
                     data.A2 ||
                     '';
                 if (!text) return;
-                // New format: DONE: <url>  => image is ready and URL follows
+                // New format: DONE: <payload>  => can be image URL or final caption/post text
                 if (text.startsWith('DONE:')) {
-                    const url = text.replace('DONE: ', '').trim();
-                    if (url) {
-                        setGeneratedImageUrl(url);
-                        globalStatusBar.textContent = '✓ Image Ready!';
-                        globalStatusBar.classList.add('visible');
-                        if (captionBtn) {
-                            captionBtn.disabled = false;
+                    const payload = text.replace('DONE: ', '').trim();
+                    if (payload) {
+                        const looksLikeUrl = /^https?:\/\//i.test(payload);
+                        if (looksLikeUrl) {
+                            // Image-ready case: payload is an image URL
+                            setGeneratedImageUrl(payload);
+                            globalStatusBar.textContent = '✓ Image Ready!';
+                            globalStatusBar.classList.add('visible');
+                            if (captionBtn) {
+                                captionBtn.disabled = false;
+                            }
+                        } else {
+                            // Caption-ready case: payload is the final marketing post text
+                            const captionArea = document.getElementById('captionText');
+                            const captionContainer = document.getElementById('captionBox');
+                            if (captionContainer) captionContainer.style.display = 'block';
+                            if (captionArea) captionArea.value = payload;
+                            globalStatusBar.textContent = '✓ Post Ready!';
+                            globalStatusBar.classList.add('visible');
+                            const step2Status = document.getElementById('step2Status');
+                            if (step2Status) {
+                                showStatus(step2Status, '✓ Post Ready!', 'success');
+                            }
+                            if (captionBtn) {
+                                captionBtn.disabled = false;
+                                captionBtn.textContent = '📝 Generate Marketing Post';
+                            }
+                            if (telegramBtn) {
+                                telegramBtn.disabled = false;
+                            }
+                            const finalTelegramBtn = document.getElementById('finalTelegram');
+                            if (finalTelegramBtn) finalTelegramBtn.disabled = false;
                         }
-                        // Stop polling once image is ready to save credits
+                        // Stop polling once final DONE: status is handled to save credits
                         if (statusPollingIntervalId) {
                             clearInterval(statusPollingIntervalId);
                             statusPollingIntervalId = null;
@@ -893,6 +918,10 @@
                 modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
             }
 
+            const captionValue = (captionText && captionText.value) || '';
+            const imgEl = document.getElementById('generatedImage');
+            const imageUrl = imgEl && imgEl.src ? imgEl.src : '';
+
             const payload = {
                 source: 'Web_App',
                 product_id: selectedProduct.id,
@@ -903,6 +932,8 @@
                 model_url: modelUrl,
                 scene: formattedScene,
                 situation: formattedScene, // Add situation field with formatted value
+                caption: captionValue,
+                image_url: imageUrl,
                 command: 'Approve & Post'
             };
 
