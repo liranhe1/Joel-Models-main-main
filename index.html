@@ -69,6 +69,16 @@
         .generate-btn:hover { transform:translateY(-2px); box-shadow:0 5px 20px rgba(212,175,55,0.4); }
         .generate-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
 
+        .next-step-glow {
+            box-shadow:0 0 0 rgba(212,175,55,0);
+            animation:next-step-glow-pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes next-step-glow-pulse {
+            0% { box-shadow:0 0 0 rgba(212,175,55,0.0); transform:translateY(0); }
+            50% { box-shadow:0 0 18px rgba(212,175,55,0.7); transform:translateY(-1px); }
+            100% { box-shadow:0 0 0 rgba(212,175,55,0.0); transform:translateY(0); }
+        }
+
         .copywriter-layout { padding:20px; max-width:800px; margin:0 auto; }
         .result-frame { background:var(--black-card); border-radius:12px; border:1px solid rgba(212,175,55,0.2); overflow:hidden; margin-bottom:20px; }
         .result-placeholder { position:relative; width:100%; aspect-ratio:1; display:flex; align-items:center; justify-content:center; background:#111; color:var(--grey); flex-direction:column; gap:10px; }
@@ -255,6 +265,18 @@
         const globalStatusBar = document.getElementById('globalStatus');
         let userHasTriggeredGeneration = false;
         let statusPollingIntervalId = null;
+        const glowTargets = [];
+
+        function setNextStepGlow(targetEl) {
+            const all = [generateBtn, captionBtn, telegramBtn];
+            all.forEach(btn => {
+                if (!btn) return;
+                btn.classList.remove('next-step-glow');
+            });
+            if (targetEl && !targetEl.disabled) {
+                targetEl.classList.add('next-step-glow');
+            }
+        }
 
         function getImageUrl(obj) {
             if (!obj) return null;
@@ -575,13 +597,29 @@
             sceneSelect.addEventListener('change', function () {
                 selectedScene = sceneSelect.value;
                 updateGenerateBtn();
+                if (selectedProduct && !generateBtn.disabled) {
+                    setNextStepGlow(generateBtn);
+                }
             });
-            generateBtn.addEventListener('click', generateImage);
+            generateBtn.addEventListener('click', function () {
+                setNextStepGlow(null);
+                generateImage();
+            });
             if (captionBtn) {
-                captionBtn.addEventListener('click', function(e) { e.preventDefault(); generateCaption(); });
+                captionBtn.addEventListener('click', function(e) { 
+                    e.preventDefault(); 
+                    setNextStepGlow(null);
+                    generateCaption(); 
+                });
             }
-            telegramBtn.addEventListener('click', sendToTelegram);
-            document.getElementById('finalTelegram').addEventListener('click', sendToTelegram);
+            telegramBtn.addEventListener('click', function () {
+                setNextStepGlow(null);
+                sendToTelegram();
+            });
+            document.getElementById('finalTelegram').addEventListener('click', function () {
+                setNextStepGlow(null);
+                sendToTelegram();
+            });
         }
 
         // Unlock: Generate Image enabled when a product is selected (no mandatory scene dependency)
@@ -634,6 +672,7 @@
                             if (captionBtn) {
                                 captionBtn.disabled = false;
                             }
+                            setNextStepGlow(captionBtn);
                         } else {
                             // Caption-ready case: payload is the final marketing post text
                             const captionArea = document.getElementById('captionText');
@@ -653,6 +692,7 @@
                             if (telegramBtn) {
                                 telegramBtn.disabled = false;
                             }
+                            setNextStepGlow(telegramBtn);
                             const finalTelegramBtn = document.getElementById('finalTelegram');
                             if (finalTelegramBtn) finalTelegramBtn.disabled = false;
                         }
@@ -805,6 +845,7 @@
                             captionBtn.disabled = false;
                             telegramBtn.disabled = false;
                             document.getElementById('finalTelegram').disabled = false;
+                            setNextStepGlow(captionBtn);
                         } else {
                             showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
                         }
@@ -891,6 +932,7 @@
                     captionText.value = caption;
                     showStatus(status, '✓ Caption ready', 'success');
                     document.getElementById('finalTelegram').disabled = false;
+                    setNextStepGlow(telegramBtn);
                 }
             } catch (err) {
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
