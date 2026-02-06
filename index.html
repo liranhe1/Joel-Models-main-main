@@ -275,7 +275,8 @@
         // Polling safety
         let lastSeenStatus = '';
         let ignoreDoneUntil = 0; // timestamp (ms) until which DONE is ignored (10s after button click)
-        let pollingStartedAt = 0; // when current run started (for 3min timeout)
+        let lastJ5Content = '';  // last value seen in J5
+        let lastJ5ChangeAt = 0;  // when J5 last changed (reset on each change; timeout if unchanged for 8 min)
 
         function setNextStepGlow(targetEl) {
             const all = [generateBtn, captionBtn, telegramBtn];
@@ -658,17 +659,6 @@
         async function fetchDashboardStatus() {
             if (!WEBHOOK_STATUS || !globalStatusBar) return;
             try {
-                // 3-minute timeout: stop polling and show reset message
-                if (pollingStartedAt && (Date.now() - pollingStartedAt > 180000)) {
-                    if (statusPollingIntervalId) {
-                        clearInterval(statusPollingIntervalId);
-                        statusPollingIntervalId = null;
-                    }
-                    globalStatusBar.textContent = 'Timeout - Please Reset';
-                    globalStatusBar.classList.add('visible');
-                    return;
-                }
-
                 const res = await fetch(WEBHOOK_STATUS);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
@@ -684,6 +674,22 @@
                 // J5 = status cell (source of truth)
                 const textRaw = data.J5 || data.j5 || data.status || data.value || data.statusText || data.A2 || '';
                 const text = (textRaw || '').toString().trim();
+
+                // Reset stale timer whenever J5 content changes
+                if (text !== lastJ5Content) {
+                    lastJ5Content = text;
+                    lastJ5ChangeAt = Date.now();
+                }
+                // Timeout only if J5 has stayed exactly the same for 8 consecutive minutes
+                if (userHasTriggeredGeneration && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > 8 * 60 * 1000)) {
+                    if (statusPollingIntervalId) {
+                        clearInterval(statusPollingIntervalId);
+                        statusPollingIntervalId = null;
+                    }
+                    globalStatusBar.textContent = 'Timeout - Please Reset';
+                    globalStatusBar.classList.add('visible');
+                    return;
+                }
                 if (text === '' && !userHasTriggeredGeneration) return;
 
                 const trimmedText = text.trim();
@@ -767,7 +773,8 @@
             generateBtn.disabled = true;
             ignoreDoneUntil = Date.now() + 10000;
             lastSeenStatus = '';
-            pollingStartedAt = Date.now();
+            lastJ5Content = '';
+            lastJ5ChangeAt = Date.now();
             if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
             userHasTriggeredGeneration = true;
             generationPhase = 'image';
@@ -942,7 +949,8 @@
             }
             ignoreDoneUntil = Date.now() + 10000;
             lastSeenStatus = '';
-            if (!pollingStartedAt) pollingStartedAt = Date.now();
+            lastJ5Content = '';
+            lastJ5ChangeAt = Date.now();
             if (globalStatusBar) { globalStatusBar.textContent = 'Processing...'; globalStatusBar.classList.add('visible'); }
             const status = document.getElementById('step2Status');
             showStatus(status, 'Generating Caption...');
