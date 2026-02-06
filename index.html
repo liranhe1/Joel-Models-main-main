@@ -306,7 +306,13 @@
                 } else if (Array.isArray(raw) && raw.length === 1) {
                     const first = raw[0];
                     if (typeof first === 'string') {
-                        try { scenariosArray = JSON.parse(first); } catch (e) { scenariosArray = raw; }
+                        try { scenariosArray = JSON.parse(first); } catch (e1) {
+                            try { scenariosArray = JSON.parse(first.trim()); } catch (e2) {
+                                try { scenariosArray = JSON.parse(first.replace(/\r?\n/g, ' ')); } catch (e3) {
+                                    scenariosArray = raw;
+                                }
+                            }
+                        }
                     } else if (Array.isArray(first)) {
                         scenariosArray = first;
                     } else if (first && typeof first === 'object' && !Array.isArray(first)) {
@@ -317,9 +323,22 @@
                 } else if (Array.isArray(raw)) {
                     scenariosArray = raw;
                 }
+                // אם עדיין יש מערך עם אלמנט יחיד שהוא מחרוזת – ניסיון פרסום שני (double-encoding)
+                if (Array.isArray(scenariosArray) && scenariosArray.length === 1 && typeof scenariosArray[0] === 'string') {
+                    try {
+                        var again = JSON.parse(scenariosArray[0]);
+                        if (Array.isArray(again)) scenariosArray = again;
+                    } catch (e) { /* leave as is */ }
+                }
                 if (!Array.isArray(scenariosArray)) {
                     console.error('Could not get array from data.scenes. raw type:', typeof raw, 'raw:', raw);
                     showStatus(statusBar, '✗ Scenarios: invalid data.scenes format', 'error');
+                    return;
+                }
+                // אם Make החזיר מערך של מחרוזת אחת (פרסום נכשל) – לא נעבד 0 שורות; נציג הודעה ברורה
+                if (scenariosArray.length === 1 && typeof scenariosArray[0] === 'string') {
+                    console.error('Scenarios: data.scenes is [string] – JSON.parse failed. Ensure Make returns an array of objects, not a stringified array.');
+                    showStatus(statusBar, '✗ Scenarios: webhook must return array of objects (not string)', 'error');
                     return;
                 }
                 console.log('data.scenes length (after normalize):', scenariosArray.length);
@@ -329,16 +348,15 @@
                 let rowsProcessed = 0;
                 const allScenes = [];
 
-                // תיקון מיפוי: הנתונים מגיעים כרשימת אובייקטים – שם סצנה מ-item["0"], קטגוריה מ-item["5"]
+                // תיקון מיפוי: שם סצנה מ-item["0"] או item[0], קטגוריה מ-item["5"] או item[5] (תאימות למפתחות מחרוזת ומספר)
                 scenariosArray.forEach((item, idx) => {
                     if (!item || typeof item !== 'object') return;
 
-                    // טיפול ב-null: רק אם item["0"] ו-item["5"] קיימים ואינם null – הסצנה נכנסת לרשימה (מסנן שורות ריקות)
-                    const rawName = item["0"];
-                    const rawCat = item["5"];
+                    const rawName = item["0"] ?? item[0];
+                    const rawCat = item["5"] ?? item[5];
                     if (rawName == null || rawCat == null) return;
                     const sceneStr = String(rawName).trim();
-                    const catStr = String(rawCat).trim();
+                    const catStr = String(rawCat).trim().replace(/\s+/g, ' ');
                     if (!sceneStr || !catStr) return;
 
                     // דילוג על שורת כותרת אם קיימת
