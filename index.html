@@ -670,8 +670,10 @@
                 const text = (textRaw || '').toString();
                 if (!text) return;
 
-                // Ignore stale DONE: values during the 10s safety window right after a new run starts
-                if (text.startsWith('DONE:') && Date.now() < ignoreDoneUntil) {
+                const trimmedText = text.trim();
+
+                // Ignore stale DONE values during the 10s safety window right after a new run starts
+                if (trimmedText.toUpperCase() === 'DONE' && Date.now() < ignoreDoneUntil) {
                     return;
                 }
 
@@ -716,32 +718,17 @@
                     setNextStepGlow(telegramBtn);
                 };
 
-                // New format: DONE: <payload>  => can be image URL or final caption/post text
-                if (text.startsWith('DONE:')) {
-                    // Extract everything after the first ':' (handles additional colons in the text)
-                    const payload = text.substring(text.indexOf(':') + 1).trim();
-                    if (payload) {
-                        const looksLikeUrl = /^https?:\/\//i.test(payload);
-                        if (looksLikeUrl) {
-                            // Image-ready case: payload is an image URL
-                            setGeneratedImageUrl(payload);
-                            globalStatusBar.textContent = '✓ Image Ready!';
-                            globalStatusBar.classList.add('visible');
-                            if (captionBtn) {
-                                captionBtn.disabled = false;
-                            }
-                            generationPhase = 'caption';
-                            setNextStepGlow(captionBtn);
-                        } else {
-                            // Caption-ready case: payload is the final marketing post text
-                            handleCaptionPayload(payload);
-                            generationPhase = 'idle';
-                        }
-                        // Stop polling once final DONE: status is handled to save credits
-                        if (statusPollingIntervalId) {
-                            clearInterval(statusPollingIntervalId);
-                            statusPollingIntervalId = null;
-                        }
+                // New format: J5 == 'DONE' indicates caption ready in Dashboard!D5
+                if (trimmedText.toUpperCase() === 'DONE') {
+                    const captionFromD5 =
+                        (data.D5 || data.d5 || '').toString().trim();
+                    if (captionFromD5) {
+                        handleCaptionPayload(captionFromD5);
+                        generationPhase = 'idle';
+                    }
+                    if (statusPollingIntervalId) {
+                        clearInterval(statusPollingIntervalId);
+                        statusPollingIntervalId = null;
                     }
                     return;
                 }
