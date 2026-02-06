@@ -253,12 +253,18 @@
         const imageSpinner = document.getElementById('imageSpinner');
         const imagePlaceholder = document.getElementById('imagePlaceholder');
         const globalStatusBar = document.getElementById('globalStatus');
+        let userHasTriggeredGeneration = false;
 
         function init() {
             renderProducts();
             setupEventListeners();
             loadScenarios();
             startStatusPolling();
+            // הודעה התחלתית: ממתין לפעולה עד שלחיצה על יצירת תמונה
+            if (globalStatusBar) {
+                globalStatusBar.textContent = 'ממתין לפעולה...';
+                globalStatusBar.classList.add('visible');
+            }
         }
 
         // --- Scenarios: load from "Scenarios" sheet and group by category ---
@@ -299,46 +305,37 @@
                     showStatus(statusBar, '✗ Scenarios: expected data.scenes', 'error');
                     return;
                 }
-                let scenariosArray = null;
+                let scenariosArray = [];
                 const raw = data.scenes;
                 if (typeof raw === 'string') {
-                    try { scenariosArray = JSON.parse(raw); } catch (e) { scenariosArray = null; }
-                } else if (Array.isArray(raw) && raw.length === 1) {
-                    const first = raw[0];
-                    if (typeof first === 'string') {
-                        try { scenariosArray = JSON.parse(first); } catch (e1) {
-                            try { scenariosArray = JSON.parse(first.trim()); } catch (e2) {
-                                try { scenariosArray = JSON.parse(first.replace(/\r?\n/g, ' ')); } catch (e3) {
-                                    scenariosArray = raw;
-                                }
-                            }
-                        }
-                    } else if (Array.isArray(first)) {
-                        scenariosArray = first;
-                    } else if (first && typeof first === 'object' && !Array.isArray(first)) {
-                        scenariosArray = [first];
-                    } else {
-                        scenariosArray = raw;
-                    }
-                } else if (Array.isArray(raw)) {
-                    scenariosArray = raw;
-                }
-                // אם עדיין יש מערך עם אלמנט יחיד שהוא מחרוזת – ניסיון פרסום שני (double-encoding)
-                if (Array.isArray(scenariosArray) && scenariosArray.length === 1 && typeof scenariosArray[0] === 'string') {
                     try {
-                        var again = JSON.parse(scenariosArray[0]);
-                        if (Array.isArray(again)) scenariosArray = again;
-                    } catch (e) { /* leave as is */ }
+                        const parsed = JSON.parse(raw);
+                        scenariosArray = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
+                    } catch (e) { scenariosArray = []; }
+                } else if (Array.isArray(raw)) {
+                    // Make מחזיר מערך של מחרוזות – כל מחרוזת היא אובייקט ב-JSON; מפרסים כל איבר
+                    raw.forEach(function (el) {
+                        if (typeof el === 'string') {
+                            try {
+                                const parsed = JSON.parse(el);
+                                if (Array.isArray(parsed)) scenariosArray.push.apply(scenariosArray, parsed);
+                                else if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) scenariosArray.push(parsed);
+                            } catch (e) { /* דילוג על מחרוזת שלא פרסה */ }
+                        } else if (el && typeof el === 'object' && !Array.isArray(el)) {
+                            scenariosArray.push(el);
+                        }
+                    });
+                    // אם יש רק איבר אחד והוא מחרוזת – ניסיון לפרסום כמערך מלא (מערך כמחרוזת)
+                    if (scenariosArray.length === 0 && raw.length === 1 && typeof raw[0] === 'string') {
+                        try {
+                            const parsed = JSON.parse(raw[0]);
+                            scenariosArray = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object' ? [parsed] : []);
+                        } catch (e) { /* נשאר מערך ריק */ }
+                    }
                 }
-                if (!Array.isArray(scenariosArray)) {
-                    console.error('Could not get array from data.scenes. raw type:', typeof raw, 'raw:', raw);
-                    showStatus(statusBar, '✗ Scenarios: invalid data.scenes format', 'error');
-                    return;
-                }
-                // אם Make החזיר מערך של מחרוזת אחת (פרסום נכשל) – לא נעבד 0 שורות; נציג הודעה ברורה
-                if (scenariosArray.length === 1 && typeof scenariosArray[0] === 'string') {
-                    console.error('Scenarios: data.scenes is [string] – JSON.parse failed. Ensure Make returns an array of objects, not a stringified array.');
-                    showStatus(statusBar, '✗ Scenarios: webhook must return array of objects (not string)', 'error');
+                if (!Array.isArray(scenariosArray) || scenariosArray.length === 0) {
+                    console.error('Could not get array of objects from data.scenes. raw type:', typeof raw, 'raw length:', raw && raw.length);
+                    showStatus(statusBar, '✗ Scenarios: no valid scene objects (check webhook format)', 'error');
                     return;
                 }
                 console.log('data.scenes length (after normalize):', scenariosArray.length);
@@ -348,16 +345,28 @@
                 let rowsProcessed = 0;
                 const allScenes = [];
 
-                // תיקון מיפוי: שם סצנה מ-item["0"] או item[0], קטגוריה מ-item["5"] או item[5] (תאימות למפתחות מחרוזת ומספר)
+                const CATEGORY_NAMES = ['Daylight Urban', 'Quiet Luxury', 'Glamour Night', 'Luxury Vacation'];
+                function getCategoryFromItem(item) {
+                    const from5 = item["5"] ?? item[5];
+                    if (from5 != null && String(from5).trim()) return String(from5).trim().replace(/\s+/g, ' ');
+                    const vals = Object.values(item);
+                    const found = vals.find(function (v) {
+                        if (typeof v !== 'string') return false;
+                        const s = v.trim();
+                        return CATEGORY_NAMES.some(function (c) { return c === s || c.toLowerCase() === s.toLowerCase(); });
+                    });
+                    return found ? String(found).trim().replace(/\s+/g, ' ') : '';
+                }
+                // תיקון מיפוי: שם סצנה מ-item["0"] או item[0], קטגוריה מ-item["5"] או חיפוש ערך שתואם לאחת מארבע הקטגוריות
                 scenariosArray.forEach((item, idx) => {
                     if (!item || typeof item !== 'object') return;
 
                     const rawName = item["0"] ?? item[0];
-                    const rawCat = item["5"] ?? item[5];
-                    if (rawName == null || rawCat == null) return;
+                    if (rawName == null) return;
                     const sceneStr = String(rawName).trim();
-                    const catStr = String(rawCat).trim().replace(/\s+/g, ' ');
-                    if (!sceneStr || !catStr) return;
+                    if (!sceneStr) return;
+                    const catStr = getCategoryFromItem(item);
+                    if (!catStr) return;
 
                     // דילוג על שורת כותרת אם קיימת
                     const lowerScene = sceneStr.toLowerCase();
@@ -540,9 +549,11 @@
                     data.A2 ||
                     '';
                 if (!text) return;
-
-                globalStatusBar.textContent = text;
-                globalStatusBar.classList.add('visible');
+                // מעדכן את ה-status רק אחרי שהמשתמש הפעיל יצירת תמונה (לא מציג "התמונה מוכנה" לפני פעולה)
+                if (userHasTriggeredGeneration) {
+                    globalStatusBar.textContent = text;
+                    globalStatusBar.classList.add('visible');
+                }
             } catch (err) {
                 console.error('Status polling error', err);
             }
@@ -556,6 +567,7 @@
 
         async function generateImage() {
             if (!selectedProduct) return;
+            userHasTriggeredGeneration = true;
             // מעבר לשונית: בלחיצה על 'Generate Image' עוברים מיד ללשונית Copywriter (2)
             document.querySelectorAll('.step-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
