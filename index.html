@@ -690,50 +690,76 @@
                     console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
 
                     if (rawTrimmed === 'Accepted') {
-                        console.log('Request accepted, waiting for Dashboard update');
-                        showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
-                        setTimeout(async function () {
-                            if (!WEBHOOK_STATUS) return;
-                            try {
-                                const statusRes = await fetch(WEBHOOK_STATUS);
-                                if (!statusRes.ok) return;
-                                const statusText = await statusRes.text();
-                                let statusData = null;
-                                try { statusData = JSON.parse(statusText); } catch (e) { return; }
-                                const url = statusData && (
-                                    getImageUrl(statusData) ||
-                                    (statusData.output && getImageUrl(statusData.output)) ||
-                                    (statusData.data && getImageUrl(statusData.data)) ||
-                                    (statusData.result && getImageUrl(statusData.result)) ||
-                                    (Array.isArray(statusData) && statusData.length && getImageUrl(statusData[0]))
-                                );
-                                if (url) {
-                                    console.log('Image URL from dashboard:', url);
-                                    setGeneratedImageUrl(url);
-                                    showStatus(statusBar, '✓ Image generated successfully', 'success');
-                                    captionBtn.disabled = false;
-                                    telegramBtn.disabled = false;
-                                    document.getElementById('finalTelegram').disabled = false;
-                                }
-                            } catch (err) { console.warn('Dashboard fetch for image URL failed', err); }
-                        }, 10000);
-                    } else {
+                        showStatus(statusBar, 'Request accepted, polling for image...', 'success');
+                        if (WEBHOOK_STATUS) {
+                            const pollMs = 5000;
+                            const pollDurationMs = 60000;
+                            let elapsed = 0;
+                            const pollOnce = async function () {
+                                if (elapsed >= pollDurationMs) return;
+                                try {
+                                    const statusRes = await fetch(WEBHOOK_STATUS);
+                                    if (!statusRes.ok) return;
+                                    const statusText = await statusRes.text();
+                                    let statusData = null;
+                                    try { statusData = JSON.parse(statusText); } catch (e) { return; }
+                                    let url = null;
+                                    if (statusData) {
+                                        if (typeof statusData.J5 === 'string' && statusData.J5.trim().startsWith('http')) url = statusData.J5.trim();
+                                        else if (typeof statusData.j5 === 'string' && statusData.j5.trim().startsWith('http')) url = statusData.j5.trim();
+                                        else url = getImageUrl(statusData) || (statusData.output && getImageUrl(statusData.output)) || (statusData.data && getImageUrl(statusData.data)) || (statusData.result && getImageUrl(statusData.result)) || (Array.isArray(statusData) && statusData.length && getImageUrl(statusData[0]));
+                                    }
+                                    if (url) {
+                                        const img = document.getElementById('generatedImage');
+                                        if (!img) {
+                                            const container = document.getElementById('resultImage');
+                                            if (container) {
+                                                const spinner = document.getElementById('imageSpinner');
+                                                const placeholder = document.getElementById('imagePlaceholder');
+                                                if (spinner) spinner.style.display = 'none';
+                                                if (placeholder) placeholder.style.display = 'none';
+                                                container.classList.remove('shimmer');
+                                                const newImg = document.createElement('img');
+                                                newImg.id = 'generatedImage';
+                                                newImg.alt = 'Generated image';
+                                                newImg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
+                                                newImg.src = url;
+                                                container.appendChild(newImg);
+                                            }
+                                        } else {
+                                            img.src = url;
+                                            img.style.display = 'block';
+                                            const spinner = document.getElementById('imageSpinner');
+                                            const placeholder = document.getElementById('imagePlaceholder');
+                                            if (spinner) spinner.style.display = 'none';
+                                            if (placeholder) placeholder.style.display = 'none';
+                                            if (resultImageEl) resultImageEl.classList.remove('shimmer');
+                                        }
+                                        showStatus(statusBar, '✓ Image generated successfully', 'success');
+                                        captionBtn.disabled = false;
+                                        telegramBtn.disabled = false;
+                                        document.getElementById('finalTelegram').disabled = false;
+                                        return true;
+                                    }
+                                } catch (err) { console.warn('Poll fetch failed', err); }
+                                return false;
+                            };
+                            const runPoll = async function () {
+                                if (await pollOnce()) return;
+                                elapsed += pollMs;
+                                if (elapsed < pollDurationMs) setTimeout(runPoll, pollMs);
+                            };
+                            runPoll();
+                        }
+                    } else if (rawTrimmed.startsWith('{')) {
                         try {
                             data = JSON.parse(rawText);
                         } catch (e) {
-                            console.warn('Image webhook did not return JSON or parsing failed.', e);
-                            console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
+                            console.warn('Image webhook JSON parse failed.', e);
                         }
-                        const finalUrl = data && (
-                            getImageUrl(data) ||
-                            (data.output && getImageUrl(data.output)) ||
-                            (data.data && getImageUrl(data.data)) ||
-                            (data.result && getImageUrl(data.result)) ||
-                            (Array.isArray(data) && data.length && getImageUrl(data[0]))
-                        );
-                        if (finalUrl) {
-                            console.log('Image URL received:', finalUrl);
-                            setGeneratedImageUrl(finalUrl);
+                        const directUrl = data && (typeof data.url === 'string' && data.url.trim() ? data.url.trim() : getImageUrl(data) || (data.output && getImageUrl(data.output)) || (data.data && getImageUrl(data.data)) || (data.result && getImageUrl(data.result)) || (Array.isArray(data) && data.length && getImageUrl(data[0])));
+                        if (directUrl) {
+                            setGeneratedImageUrl(directUrl);
                             showStatus(statusBar, '✓ Image generated successfully', 'success');
                             captionBtn.disabled = false;
                             telegramBtn.disabled = false;
@@ -741,6 +767,8 @@
                         } else {
                             showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
                         }
+                    } else {
+                        showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
                     }
                 }
             } catch (err) {
