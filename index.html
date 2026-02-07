@@ -121,6 +121,9 @@
         ::-webkit-scrollbar { width:6px; }
         ::-webkit-scrollbar-track { background:var(--black); }
         ::-webkit-scrollbar-thumb { background:var(--gold); border-radius:3px; }
+
+        .liran-control-panel { position:fixed; bottom:12px; right:12px; z-index:200; background:#0a0a0a; color:#22c55e; font-size:11px; font-family:monospace; padding:10px 12px; border-radius:6px; border:1px solid rgba(34,197,94,0.4); max-width:280px; line-height:1.5; }
+        .liran-control-panel div { margin:2px 0; word-break:break-all; }
     </style>
 </head>
 <body>
@@ -235,6 +238,13 @@
         </section>
     </main>
 
+    <div class="liran-control-panel" id="liranControlPanel">
+        <div>Webhook URL: <span id="liranWebhook">—</span></div>
+        <div>Row 5 Data Found: <span id="liranRow5">—</span></div>
+        <div>B5 Link: <span id="liranB5">—</span></div>
+        <div>D5 Text: <span id="liranD5">—</span></div>
+    </div>
+
     <script src="products_verified.js"></script>
     <script>
         const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
@@ -348,10 +358,92 @@
             return document.getElementById('generatedImage') || document.getElementById('mainImage');
         }
 
+        function updateLiranPanel(webhookStatus, row5Found, b5Preview, d5Preview) {
+            const panel = document.getElementById('liranControlPanel');
+            if (!panel) return;
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+            set('liranWebhook', webhookStatus != null ? (webhookStatus ? 'OK' : 'Missing') : '—');
+            set('liranRow5', row5Found != null ? (row5Found ? 'Yes' : 'No') : '—');
+            set('liranB5', b5Preview != null ? (b5Preview.length > 10 ? b5Preview.slice(0, 10) + '…' : b5Preview) || 'Missing' : '—');
+            set('liranD5', d5Preview != null ? (d5Preview.length > 10 ? d5Preview.slice(0, 10) + '…' : d5Preview) || 'Missing' : '—');
+        }
+
+        function getCenterImg() {
+            const frame = document.querySelector('.result-frame');
+            if (frame) {
+                const imgs = frame.querySelectorAll('img');
+                if (imgs.length) return imgs[imgs.length - 1];
+            }
+            const placeholder = document.querySelector('.result-placeholder');
+            if (placeholder) {
+                const imgs = placeholder.querySelectorAll('img');
+                if (imgs.length) return imgs[imgs.length - 1];
+            }
+            const layout = document.querySelector('.copywriter-layout');
+            if (layout) {
+                const imgs = layout.querySelectorAll('img');
+                if (imgs.length) return imgs[0];
+            }
+            return null;
+        }
+
+        function getMarketingArea() {
+            const box = document.querySelector('.caption-box');
+            if (box) {
+                const ta = box.querySelector('textarea');
+                if (ta) return ta;
+                const divs = box.querySelectorAll('div');
+                for (let i = 0; i < divs.length; i++) {
+                    const d = divs[i];
+                    if (d.childNodes.length && (d.innerText || d.textContent).length > 20) return d;
+                }
+            }
+            const textareas = document.querySelectorAll('.copywriter-layout textarea, .caption-text');
+            for (let i = 0; i < textareas.length; i++) {
+                const t = textareas[i];
+                if (t.offsetHeight > 50 || (t.placeholder && t.placeholder.indexOf('Marketing') !== -1)) return t;
+            }
+            return null;
+        }
+
+        function injectImageByPosition(url) {
+            if (!url) return;
+            const u = normalizeImageUrl(String(url).trim());
+            let img = getCenterImg();
+            const container = getImageContainerEl();
+            if (!img && container) {
+                img = document.createElement('img');
+                img.alt = 'Generated image';
+                img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:block;';
+                container.appendChild(img);
+            }
+            if (img) {
+                img.src = u;
+                img.style.display = 'block';
+                currentImageUrl = u;
+            }
+            if (container) {
+                container.classList.remove('shimmer');
+                const ph = document.getElementById('imagePlaceholder');
+                if (ph) ph.style.display = 'none';
+            }
+        }
+
+        function injectMarketingTextByPosition(text) {
+            if (text == null || String(text).trim() === '') return;
+            const clean = String(text).trim();
+            const el = getMarketingArea();
+            if (!el) return;
+            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = clean;
+            else el.innerText = clean;
+            currentCaption = clean;
+            const captionBox = document.querySelector('.caption-box');
+            if (captionBox) captionBox.style.display = 'block';
+        }
+
         function normalizeImageUrl(url) {
             if (!url) return url;
             let u = String(url).trim();
-            // Dropbox: force dl.dropboxusercontent.com and &raw=1 for direct display
             if (u.includes('dropbox.com')) {
                 u = u.replace(/www\.dropbox\.com/g, 'dl.dropboxusercontent.com');
                 u = u.replace(/dropbox\.com/g, 'dl.dropboxusercontent.com');
@@ -359,6 +451,30 @@
                 if (!/[?&]raw=1(?=&|$)/i.test(u)) u += (u.includes('?') ? '&' : '?') + 'raw=1';
             }
             return u;
+        }
+
+        function extractFromRawResponse(rawStr) {
+            if (typeof rawStr !== 'string' || !rawStr.trim()) return { url: '', hebrewText: '' };
+            const s = rawStr;
+            let url = '';
+            const dropboxMatch = s.match(/https?:\/\/(?:www\.)?dropbox\.com\/[^\s"')\]]+/i) || s.match(/https?:\/\/dl\.dropbox[^\s"')\]]+/i);
+            if (dropboxMatch) url = dropboxMatch[0].trim();
+            else {
+                const anyHttps = s.match(/https?:\/\/[^\s"')\]]+/gi);
+                if (anyHttps && anyHttps.length) url = anyHttps[0].trim();
+            }
+            const hebrewBlockRegex = /[\u0590-\u05FF\u200f\u200e\s.,!?'\"-]+/g;
+            const blocks = s.match(hebrewBlockRegex) || [];
+            let hebrewText = '';
+            let maxLen = 0;
+            for (let i = 0; i < blocks.length; i++) {
+                const b = blocks[i].trim();
+                if (b.length > maxLen && b.length > 15) {
+                    maxLen = b.length;
+                    hebrewText = b;
+                }
+            }
+            return { url: url || '', hebrewText: hebrewText || '' };
         }
 
         // Get raw value for a cell from dashboard response (Victoria_Dashboard row 5: B5, D5, J5)
@@ -524,6 +640,7 @@
                 globalStatusBar.textContent = 'Waiting for action...';
                 globalStatusBar.classList.add('visible');
             }
+            updateLiranPanel(!!WEBHOOK_STATUS, null, null, null);
         }
 
         // --- Scenarios: load from "Scenarios" sheet and group by category ---
@@ -827,23 +944,37 @@
         async function fetchDashboardStatus() {
             const statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
             if (!statusUrl || !globalStatusBar) return;
+            updateLiranPanel(!!statusUrl, null, null, null);
             try {
                 const res = await fetch(statusUrl);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
+                const rawText = await res.text();
+                const extracted = extractFromRawResponse(rawText);
+                const rawUrl = extracted.url ? normalizeImageUrl(extracted.url) : '';
+                const rawHebrew = (extracted.hebrewText || '').trim();
+
                 let data;
-                let rawText;
                 try {
-                    rawText = await res.text();
                     const sanitized = sanitizeJsonString(rawText);
                     data = JSON.parse(sanitized);
                 } catch (parseErr) {
-                    console.error('Status webhook did not return valid JSON:', parseErr);
+                    updateLiranPanel(!!statusUrl, !!(rawUrl || rawHebrew), rawUrl ? rawUrl.slice(0, 20) : 'Missing', rawHebrew ? rawHebrew.slice(0, 20) : 'Missing');
+                    if (rawUrl) injectImageByPosition(rawUrl);
+                    if (rawHebrew) injectMarketingTextByPosition(rawHebrew);
                     return;
                 }
-                // J5 = status cell (source of truth) — direct cell mapping with fallbacks
+
                 const textRaw = getCellValue(data, 'J5') ?? data.J5 ?? data.j5 ?? data.status ?? data.value ?? data.statusText ?? data.A2 ?? '';
                 const text = (textRaw !== undefined && textRaw !== null) ? String(textRaw).trim() : '';
+                const b5Raw = getCellValue(data, 'B5');
+                const d5Raw = getCellValue(data, 'D5');
+                const urlFromParsed = extractUrlFromB5(b5Raw);
+                const captionFromParsed = (d5Raw !== undefined && d5Raw !== null) ? String(d5Raw).trim() : '';
+                const row5Found = !!(text || urlFromParsed || captionFromParsed || rawUrl || rawHebrew);
+                const b5Preview = urlFromParsed || rawUrl || 'Missing';
+                const d5Preview = captionFromParsed || rawHebrew || 'Missing';
+                updateLiranPanel(!!statusUrl, row5Found, b5Preview, d5Preview);
 
                 // Reset stale timer whenever J5 content changes
                 if (text !== lastJ5Content) {
@@ -902,21 +1033,22 @@
                 if (isDone && userHasTriggeredGeneration) {
                     stopPersonaCycle();
                     if (generationPhase === 'image') {
-                        // Image stage: URL from B5 (raw value or formula with HTTPS link)
-                        const b5Raw = getCellValue(data, 'B5');
-                        const urlFromSheet = extractUrlFromB5(b5Raw);
-                        if (urlFromSheet) setGeneratedImageUrl(urlFromSheet);
+                        const urlToUse = urlFromParsed || rawUrl;
+                        if (urlToUse) {
+                            setGeneratedImageUrl(urlToUse);
+                            injectImageByPosition(urlToUse);
+                        }
                         globalStatusBar.textContent = '✓ Image Ready';
                         globalStatusBar.classList.add('visible');
                         setButtonLocked(captionBtn, false);
                         generationPhase = 'caption';
                         setNextStepGlow(captionBtn);
-                        // Telegram stays locked until post is done
                     } else {
-                        // Post stage: caption from D5 (full string into marketing text container)
-                        const d5Raw = getCellValue(data, 'D5');
-                        const captionFromD5 = (d5Raw !== undefined && d5Raw !== null) ? String(d5Raw).trim() : '';
-                        if (captionFromD5) handleCaptionPayload(captionFromD5);
+                        const captionToUse = captionFromParsed || rawHebrew;
+                        if (captionToUse) {
+                            handleCaptionPayload(captionToUse);
+                            injectMarketingTextByPosition(captionToUse);
+                        }
                         generationPhase = 'idle';
                     }
                     if (statusPollingIntervalId) { clearInterval(statusPollingIntervalId); statusPollingIntervalId = null; }
