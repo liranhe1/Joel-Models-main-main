@@ -242,6 +242,7 @@
         <div><strong>Watching Row 5 - Victoria_Dashboard</strong></div>
         <div>Webhook URL: <span id="liranWebhook">—</span></div>
         <div>Webhook Status: <span id="liranWebhookStatus">—</span></div>
+        <div>B5 Content Detected: <span id="liranB5Detected">—</span></div>
         <div>Final URL: <span id="liranFinalUrl">—</span></div>
         <div>Regex Image: <span id="liranRegexImage">—</span></div>
         <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
@@ -499,6 +500,11 @@
         function setLiranWebhookStatus(msg) {
             var el = document.getElementById('liranWebhookStatus');
             if (el) el.textContent = msg !== undefined && msg !== null && msg !== '' ? msg : '—';
+        }
+
+        function setLiranB5Detected(val) {
+            var el = document.getElementById('liranB5Detected');
+            if (el) el.textContent = val !== undefined && val !== null && val !== '' ? (String(val).length > 35 ? String(val).slice(0, 35) + '…' : String(val)) : '—';
         }
 
         function extractImageUrlFromRaw(rawStr) {
@@ -1343,43 +1349,42 @@
                         setNextStepGlow(captionBtn);
                         generationPhase = 'caption';
                     } else if (rawTrimmed === 'Accepted') {
-                        showStatus(statusBar, 'Request accepted, polling for image...', 'success');
-                        const statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
+                        showStatus(statusBar, 'Request accepted, polling Row 5 every 2s...', 'success');
+                        var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
                         if (statusUrl) {
-                            const pollMs = 5000;
-                            const pollDurationMs = 60000;
-                            let elapsed = 0;
-                            const pollOnce = async function () {
-                                if (elapsed >= pollDurationMs) return;
+                            var emergencyPollMs = 2000;
+                            var emergencyIntervalId = null;
+                            var pollRow5Raw = async function () {
                                 try {
-                                    const statusRes = await fetch(statusUrl);
+                                    var statusRes = await fetch(statusUrl);
                                     if (!statusRes.ok) return;
-                                    const statusText = await statusRes.text();
-                                    let statusData = null;
-                                    try { statusData = JSON.parse(sanitizeJsonString(statusText)); } catch (e) { return; }
-                                    let url = null;
-                                    if (statusData) {
-                                        if (typeof statusData.J5 === 'string' && statusData.J5.trim().startsWith('http')) url = statusData.J5.trim();
-                                        else if (typeof statusData.j5 === 'string' && statusData.j5.trim().startsWith('http')) url = statusData.j5.trim();
-                                        else url = getImageUrl(statusData) || (statusData.output && getImageUrl(statusData.output)) || (statusData.data && getImageUrl(statusData.data)) || (statusData.result && getImageUrl(statusData.result)) || (Array.isArray(statusData) && statusData.length && getImageUrl(statusData[0]));
-                                    }
-                                    if (url) {
-                                        setGeneratedImageUrl(url);
-                                        showStatus(statusBar, '✓ Image generated successfully', 'success');
-                                        setButtonLocked(captionBtn, false);
-                                        generationPhase = 'caption';
+                                    var rawText = await statusRes.text();
+                                    var j5Val = extractStatusFromRaw(rawText);
+                                    var b5Raw = extractImageUrlFromRaw(rawText);
+                                    if (String(j5Val).toUpperCase().trim() === 'IMAGE_READY' && b5Raw && b5Raw.trim()) {
+                                        if (emergencyIntervalId) { clearInterval(emergencyIntervalId); emergencyIntervalId = null; }
+                                        var urlFixed = normalizeImageUrl(String(b5Raw).trim());
+                                        if (imageSpinner) imageSpinner.style.display = 'none';
+                                        if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
+                                        setGeneratedImageUrl(urlFixed);
+                                        injectImageByPosition(urlFixed);
+                                        setLiranB5Detected(b5Raw.trim());
+                                        setLiranFinalUrl(urlFixed);
+                                        setLiranWebhookStatus('B5 Content Detected (Emergency Poll)');
+                                        stopPersonaCycle();
+                                        if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
+                                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                                         setNextStepGlow(captionBtn);
-                                        return true;
+                                        generationPhase = 'caption';
+                                        return;
                                     }
-                                } catch (err) { console.warn('Poll fetch failed', err); }
-                                return false;
+                                } catch (err) { console.warn('Emergency poll fetch failed', err); }
                             };
-                            const runPoll = async function () {
-                                if (await pollOnce()) return;
-                                elapsed += pollMs;
-                                if (elapsed < pollDurationMs) setTimeout(runPoll, pollMs);
-                            };
-                            runPoll();
+                            pollRow5Raw();
+                            emergencyIntervalId = setInterval(pollRow5Raw, emergencyPollMs);
+                            setTimeout(function () {
+                                if (emergencyIntervalId) { clearInterval(emergencyIntervalId); emergencyIntervalId = null; }
+                            }, 10 * 60 * 1000);
                         }
                     } else if (rawTrimmed.startsWith('{')) {
                         try {
