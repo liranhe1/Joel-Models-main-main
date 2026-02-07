@@ -300,7 +300,10 @@
             'לירן, אנחנו במוד \'המתנה חכמה\'. ויקטוריה בודקת שהכל מתקדם לפי התוכנית.'
         ];
         const TIMEOUT_MS = 12 * 60 * 1000;
-        const POLL_INTERVAL_MS = 4000;
+        const POLL_INTERVAL_MS = 30000;
+        const POLL_HARD_LIMIT_MS = 10 * 60 * 1000;
+        const CREDITS_PAUSED_KEY = 'joel_credits_paused';
+        const CREDITS_PAUSED_MSG = 'לירן, הקרדיטים במייק נגמרו. המערכת בהפסקה עד לטעינה מחדש.';
         const FAILURE_MESSAGE = 'לירן, נראה שגם 5 ניסיונות לא הספיקו. אולי כדאי לבדוק את ה-API או לעשות ריסט.';
 
         const SCENARIO_CATEGORIES = {
@@ -339,6 +342,7 @@
         const globalStatusBar = document.getElementById('globalStatus');
         let userHasTriggeredGeneration = false;
         let statusPollingIntervalId = null;
+        let pollingStartedAt = 0;
         // Tracks where we are in a generation run: 'idle' | 'image' | 'caption'
         let generationPhase = 'idle';
         // Global state for current result
@@ -630,7 +634,38 @@
             else el.classList.remove('btn-locked');
         }
 
+        function showCreditWarning() {
+            if (globalStatusBar) {
+                globalStatusBar.textContent = CREDITS_PAUSED_MSG;
+                globalStatusBar.className = 'status-bar visible error';
+                globalStatusBar.style.display = 'block';
+            }
+        }
+
+        function hideGenerateButtons() {
+            if (generateBtn) { generateBtn.style.display = 'none'; generateBtn.disabled = true; }
+            if (captionBtn) { captionBtn.style.display = 'none'; captionBtn.disabled = true; }
+        }
+
+        function showGenerateButtons() {
+            if (generateBtn) { generateBtn.style.display = ''; generateBtn.disabled = !selectedProduct; }
+            if (captionBtn) { captionBtn.style.display = ''; setButtonLocked(captionBtn, true); }
+        }
+
+        function stopPollingAndPause(reason) {
+            try { if (typeof localStorage !== 'undefined') localStorage.setItem(CREDITS_PAUSED_KEY, reason || 'pause'); } catch (e) {}
+            if (statusPollingIntervalId) {
+                clearInterval(statusPollingIntervalId);
+                statusPollingIntervalId = null;
+            }
+            stopPersonaCycle();
+            showCreditWarning();
+            hideGenerateButtons();
+        }
+
         function hardReset() {
+            try { if (typeof localStorage !== 'undefined') localStorage.removeItem(CREDITS_PAUSED_KEY); } catch (e) {}
+            showGenerateButtons();
             stopPersonaCycle();
             if (statusPollingIntervalId) {
                 clearInterval(statusPollingIntervalId);
@@ -677,6 +712,12 @@
 
         function init() {
             if (typeof window !== 'undefined') window.lastWebhookUrl = WEBHOOK_STATUS;
+            try {
+                if (typeof localStorage !== 'undefined' && localStorage.getItem(CREDITS_PAUSED_KEY)) {
+                    showCreditWarning();
+                    hideGenerateButtons();
+                }
+            } catch (e) {}
             renderProducts();
             setupEventListeners();
             loadScenarios();
@@ -992,6 +1033,13 @@
 
         // --- Live dashboard status polling: RAW STRING ONLY, no JSON.parse ---
         async function fetchDashboardStatus() {
+            try {
+                if (typeof localStorage !== 'undefined' && localStorage.getItem(CREDITS_PAUSED_KEY)) return;
+            } catch (e) {}
+            if (pollingStartedAt && (Date.now() - pollingStartedAt > POLL_HARD_LIMIT_MS)) {
+                stopPollingAndPause('timeout');
+                return;
+            }
             var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
             if (!statusUrl || !globalStatusBar) return;
             updateLiranPanel(!!statusUrl, null, null, null, null);
@@ -1023,13 +1071,7 @@
                     lastJ5ChangeAt = Date.now();
                 }
                 if (userHasTriggeredGeneration && text && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > TIMEOUT_MS)) {
-                    stopPersonaCycle();
-                    if (statusPollingIntervalId) {
-                        clearInterval(statusPollingIntervalId);
-                        statusPollingIntervalId = null;
-                    }
-                    globalStatusBar.innerHTML = wrapLiranWithShimmer(FAILURE_MESSAGE);
-                    globalStatusBar.classList.add('visible', 'error', 'persona-shimmer');
+                    stopPollingAndPause('ERROR');
                     return;
                 }
                 if (text === '' && !userHasTriggeredGeneration) return;
@@ -1086,6 +1128,7 @@
                         }
                         generationPhase = 'idle';
                     }
+                    try { if (typeof localStorage !== 'undefined') localStorage.setItem(CREDITS_PAUSED_KEY, 'DONE'); } catch (e) {}
                     if (statusPollingIntervalId) { clearInterval(statusPollingIntervalId); statusPollingIntervalId = null; }
                     return;
                 }
@@ -1098,14 +1141,19 @@
                 }
             } catch (err) {
                 console.error('Status polling error', err);
+                stopPollingAndPause('ERROR');
             }
         }
 
         function startStatusPolling() {
-            fetchDashboardStatus();
+            try {
+                if (typeof localStorage !== 'undefined' && localStorage.getItem(CREDITS_PAUSED_KEY)) return;
+            } catch (e) {}
             if (statusPollingIntervalId) {
                 clearInterval(statusPollingIntervalId);
             }
+            pollingStartedAt = Date.now();
+            fetchDashboardStatus();
             statusPollingIntervalId = setInterval(fetchDashboardStatus, POLL_INTERVAL_MS);
         }
 
