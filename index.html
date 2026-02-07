@@ -95,12 +95,14 @@
         .instagram-post-card {
             background:#fff; border-radius:16px;
             box-shadow:0 8px 32px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
-            padding:20px; max-height:320px; overflow-y:auto; direction:rtl; text-align:right;
-            font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:0.98rem; line-height:1.7;
+            padding:30px; max-height:360px; overflow-y:auto; direction:rtl; text-align:right;
+            font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:1.02rem; line-height:1.75;
             color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; unicode-bidi:plaintext;
         }
-        .instagram-post-card .post-body { margin:0; }
-        .instagram-post-card.post-loading .post-body { color:#666; font-style:normal; }
+        .instagram-post-card .post-body { margin:0; font-size:1.06rem; }
+        .instagram-post-card .post-body .post-hook { font-weight:700; display:block; margin-bottom:0.35em; }
+        .instagram-post-card .post-body .post-rest { font-weight:500; }
+        .instagram-post-card.post-loading .post-body { color:#666; font-style:normal; font-weight:500; }
         .caption-text { width:100%; min-height:80px; background:transparent; border:none; color:var(--white); font-family:inherit; font-size:0.95rem; line-height:1.6; resize:vertical; display:none; }
         .caption-text:focus { outline:none; }
 
@@ -485,6 +487,12 @@
             if (container) container.classList.remove('shimmer');
         }
 
+        function escapeHtmlForPost(str) {
+            if (str == null) return '';
+            var s = String(str);
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
         function injectMarketingTextByPosition(text) {
             if (text == null || String(text).trim() === '') return;
             const clean = String(text).trim();
@@ -493,9 +501,17 @@
                 if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = clean;
                 else el.innerText = clean;
             }
-            var cardBody = document.getElementById('instagramPostBody');
-            if (cardBody) cardBody.textContent = clean;
             currentCaption = clean;
+            var cardBody = document.getElementById('instagramPostBody');
+            if (cardBody) {
+                var lines = clean.split('\n');
+                var first = lines[0] || '';
+                var rest = lines.slice(1).join('\n');
+                cardBody.innerHTML = '<span class="post-hook">' + escapeHtmlForPost(first) + '</span>' + (rest ? '\n<span class="post-rest">' + escapeHtmlForPost(rest) + '</span>' : '');
+                cardBody.classList.remove('post-loading');
+            }
+            var cardEl = document.getElementById('instagramPostCard');
+            if (cardEl) cardEl.classList.remove('post-loading');
             const captionBox = document.querySelector('.caption-box');
             if (captionBox) captionBox.style.display = 'block';
         }
@@ -1595,8 +1611,6 @@
                                 if (d5Text) {
                                     if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
                                     clearTimeout(d5TimeoutId);
-                                    if (cardBody) { cardBody.textContent = d5Text; cardBody.classList.remove('post-loading'); }
-                                    if (cardEl) cardEl.classList.remove('post-loading');
                                     injectMarketingTextByPosition(d5Text);
                                     return;
                                 }
@@ -1649,7 +1663,8 @@
             }
 
             const marketingEl = getMarketingTextEl();
-            const captionValue = currentCaption || (marketingEl && (marketingEl.value !== undefined ? marketingEl.value : marketingEl.innerText)) || '';
+            var cardBodyEl = document.getElementById('instagramPostBody');
+            const captionValue = currentCaption || (marketingEl && (marketingEl.value !== undefined ? marketingEl.value : marketingEl.innerText)) || (cardBodyEl && cardBodyEl.innerText && String(cardBodyEl.innerText).trim()) || '';
             var imgEl = getGeneratedImageEl();
             var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : (currentImageUrl || '');
             if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
