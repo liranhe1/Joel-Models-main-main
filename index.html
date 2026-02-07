@@ -241,6 +241,7 @@
     <div class="liran-control-panel" id="liranControlPanel">
         <div><strong>Watching Row 5 - Victoria_Dashboard</strong></div>
         <div>Webhook URL: <span id="liranWebhook">—</span></div>
+        <div>Final URL: <span id="liranFinalUrl">—</span></div>
         <div>Regex Image: <span id="liranRegexImage">—</span></div>
         <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
         <div>B5 Link: <span id="liranB5">—</span></div>
@@ -306,6 +307,7 @@
         const CREDITS_PAUSED_KEY = 'joel_credits_paused';
         const CREDITS_PAUSED_MSG = 'לירן, הקרדיטים במייק נגמרו. המערכת בהפסקה עד לטעינה מחדש.';
         const FAILURE_MESSAGE = 'לירן, נראה שגם 5 ניסיונות לא הספיקו. אולי כדאי לבדוק את ה-API או לעשות ריסט.';
+        const DROPBOX_LINK_ERROR_MSG = 'לירן, הקישור מדרופבוקס לא תקין, בודק שוב...';
 
         const SCENARIO_CATEGORIES = {
             'daylight-urban': 'Daylight Urban',
@@ -436,9 +438,14 @@
 
         function injectImageByPosition(url) {
             if (!url) return;
-            const u = normalizeImageUrl(String(url).trim());
-            let img = getCenterImg();
-            const container = getImageContainerEl();
+            var u = normalizeImageUrl(String(url).trim());
+            var spinner = document.getElementById('imageSpinner');
+            var ph = document.getElementById('imagePlaceholder');
+            if (spinner) spinner.style.display = 'none';
+            if (ph) { ph.style.display = 'none'; }
+            setLiranFinalUrl(u);
+            var img = getCenterImg();
+            var container = getImageContainerEl();
             if (!img && container) {
                 img = document.createElement('img');
                 img.alt = 'Generated image';
@@ -446,15 +453,17 @@
                 container.appendChild(img);
             }
             if (img) {
+                img.onerror = function () {
+                    if (globalStatusBar) {
+                        globalStatusBar.textContent = DROPBOX_LINK_ERROR_MSG;
+                        globalStatusBar.classList.add('visible', 'error');
+                    }
+                };
                 img.src = u;
                 img.style.display = 'block';
                 currentImageUrl = u;
             }
-            if (container) {
-                container.classList.remove('shimmer');
-                const ph = document.getElementById('imagePlaceholder');
-                if (ph) ph.style.display = 'none';
-            }
+            if (container) container.classList.remove('shimmer');
         }
 
         function injectMarketingTextByPosition(text) {
@@ -475,10 +484,15 @@
             if (u.indexOf('dropbox.com') !== -1) {
                 u = u.replace(/www\.dropbox\.com/g, 'dl.dropboxusercontent.com');
                 u = u.replace(/dropbox\.com/g, 'dl.dropboxusercontent.com');
-                if (u.indexOf('dl=0') !== -1) u = u.replace('dl=0', 'dl=1');
+                u = u.replace(/dl=0/g, 'raw=1');
                 if (!/[?&]raw=1(?=&|$)/i.test(u)) u += (u.indexOf('?') !== -1 ? '&' : '?') + 'raw=1';
             }
             return u;
+        }
+
+        function setLiranFinalUrl(fixedUrl) {
+            var el = document.getElementById('liranFinalUrl');
+            if (el) el.textContent = fixedUrl ? (fixedUrl.length > 40 ? fixedUrl.slice(0, 40) + '…' : fixedUrl) : '—';
         }
 
         function extractImageUrlFromRaw(rawStr) {
@@ -570,16 +584,17 @@
 
         function setGeneratedImageUrl(url) {
             if (!url) return;
-            const normalizedUrl = normalizeImageUrl(url);
+            var normalizedUrl = normalizeImageUrl(url);
             currentImageUrl = normalizedUrl;
-            const container = getImageContainerEl();
-            const spinner = document.getElementById('imageSpinner');
-            const placeholder = document.getElementById('imagePlaceholder');
+            setLiranFinalUrl(normalizedUrl);
+            var container = getImageContainerEl();
+            var spinner = document.getElementById('imageSpinner');
+            var placeholder = document.getElementById('imagePlaceholder');
+            if (spinner) spinner.style.display = 'none';
+            if (placeholder) placeholder.style.display = 'none';
             if (container) {
                 container.classList.remove('shimmer');
-                if (spinner) spinner.style.display = 'none';
-                if (placeholder) placeholder.style.display = 'none';
-                let img = getGeneratedImageEl();
+                var img = getGeneratedImageEl();
                 if (!img) {
                     img = document.createElement('img');
                     img.id = 'generatedImage';
@@ -588,7 +603,12 @@
                     container.appendChild(img);
                 }
                 img.onload = function () { console.log('Image loaded successfully:', img.src); };
-                img.onerror = function () { console.error('Image failed to load:', img.src); };
+                img.onerror = function () {
+                    if (globalStatusBar) {
+                        globalStatusBar.textContent = DROPBOX_LINK_ERROR_MSG;
+                        globalStatusBar.classList.add('visible', 'error');
+                    }
+                };
                 img.src = normalizedUrl;
                 img.style.display = 'block';
             }
