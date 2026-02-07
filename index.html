@@ -91,8 +91,15 @@
         .btn-caption { background:linear-gradient(135deg,#4a90d9,#357abd); color:white; }
         .btn-telegram { background:linear-gradient(135deg,#0088cc,#006699); color:white; }
         .btn-instagram { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; opacity:0.5; cursor:not-allowed; }
-        .caption-box { background:var(--glass); border:1px solid rgba(212,175,55,0.2); border-radius:8px; padding:15px; margin-top:15px; }
-        .caption-text { width:100%; min-height:120px; background:transparent; border:none; color:var(--white); font-family:inherit; font-size:0.95rem; line-height:1.6; resize:vertical; }
+        .caption-box { margin-top:15px; }
+        .instagram-post-card {
+            background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
+            padding:20px; max-height:280px; overflow-y:auto; direction:rtl; text-align:right;
+            font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:0.95rem; line-height:1.65;
+            color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; unicode-bidi:plaintext;
+        }
+        .instagram-post-card .post-body { margin:0; }
+        .caption-text { width:100%; min-height:80px; background:transparent; border:none; color:var(--white); font-family:inherit; font-size:0.95rem; line-height:1.6; resize:vertical; display:none; }
         .caption-text:focus { outline:none; }
 
         .distribution-layout { padding:20px; max-width:600px; margin:0 auto; text-align:center; }
@@ -217,7 +224,10 @@
                     </div>
                 </div>
                 <div class="caption-box" id="captionBox" style="display:none">
-                    <textarea class="caption-text" id="captionText" placeholder="Marketing text will appear here..."></textarea>
+                    <div class="instagram-post-card" id="instagramPostCard">
+                        <div class="post-body" id="instagramPostBody"></div>
+                    </div>
+                    <textarea class="caption-text" id="captionText" placeholder="Marketing text will appear here..." aria-hidden="true"></textarea>
                 </div>
                 <div class="status-bar" id="step2Status"></div>
             </div>
@@ -477,9 +487,12 @@
             if (text == null || String(text).trim() === '') return;
             const clean = String(text).trim();
             const el = getMarketingArea();
-            if (!el) return;
-            if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = clean;
-            else el.innerText = clean;
+            if (el) {
+                if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = clean;
+                else el.innerText = clean;
+            }
+            var cardBody = document.getElementById('instagramPostBody');
+            if (cardBody) cardBody.textContent = clean;
             currentCaption = clean;
             const captionBox = document.querySelector('.caption-box');
             if (captionBox) captionBox.style.display = 'block';
@@ -1536,38 +1549,50 @@
                     body: JSON.stringify(payload)
                 });
 
-                if (!res.ok) {
-                    showStatus(status, '✗ Error generating caption', 'error');
-                } else {
-                    let data = null;
-                    let rawText;
+                var postText = '';
+                var rawText = '';
+                if (res.ok) {
                     try {
                         rawText = await res.text();
                         console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
-                        data = JSON.parse(sanitizeJsonString(rawText));
-                    } catch (e) {
-                        console.warn('Caption webhook did not return JSON or parsing failed.', e);
-                        console.error('Raw response text that failed to parse:', rawText || '(could not read text)');
-                    }
-
-                    if (captionBox) captionBox.style.display = 'block';
-
-                    const caption =
-                        (data && (data.caption || data.text || data.captionText)) ||
-                        'Marketing text is being generated...';
-
-                    currentCaption = caption;
-                    const marketingEl = getMarketingTextEl();
-                    if (marketingEl) {
-                        if (marketingEl.tagName === 'TEXTAREA' || marketingEl.tagName === 'INPUT') marketingEl.value = caption;
-                        else marketingEl.innerText = caption;
-                    }
-                    showStatus(status, '✓ Caption ready', 'success');
-                    setButtonLocked(telegramBtn, false);
-                    const ft = document.getElementById('finalTelegram');
-                    if (ft) { ft.disabled = false; ft.classList.remove('btn-locked'); }
-                    setNextStepGlow(telegramBtn);
+                        var data = JSON.parse(sanitizeJsonString(rawText));
+                        postText = (data && (data.post_text || data.caption || data.text || data.captionText)) ? String(data.post_text || data.caption || data.text || data.captionText).trim() : '';
+                    } catch (e) { console.warn('Caption webhook parse failed.', e); }
                 }
+
+                if (!postText) {
+                    try {
+                        var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
+                        if (statusUrl) {
+                            var sr = await fetch(statusUrl);
+                            if (sr.ok) {
+                                var raw = await sr.text();
+                                var row5 = parseRow5Simple(raw);
+                                postText = (row5.post && String(row5.post).trim()) ? String(row5.post).trim() : '';
+                            }
+                        }
+                    } catch (e2) { console.warn('D5 fallback fetch failed.', e2); }
+                }
+
+                stopPersonaCycle();
+                if (statusPollingIntervalId) {
+                    clearInterval(statusPollingIntervalId);
+                    statusPollingIntervalId = null;
+                }
+
+                if (postText) {
+                    if (captionBox) captionBox.style.display = 'block';
+                    injectMarketingTextByPosition(postText);
+                    if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
+                    if (globalStatusBar) { globalStatusBar.textContent = ''; globalStatusBar.innerHTML = ''; globalStatusBar.className = 'status-bar'; globalStatusBar.classList.remove('visible', 'error', 'success'); globalStatusBar.style.display = 'none'; }
+                } else {
+                    showStatus(status, res.ok ? '✗ No post text in response' : '✗ Error generating caption', 'error');
+                }
+
+                setButtonLocked(telegramBtn, false);
+                var ft = document.getElementById('finalTelegram');
+                if (ft) { ft.disabled = false; ft.classList.remove('btn-locked'); }
+                setNextStepGlow(telegramBtn);
             } catch (err) {
                 stopPersonaCycle();
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
