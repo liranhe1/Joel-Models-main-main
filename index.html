@@ -240,7 +240,8 @@
 
     <div class="liran-control-panel" id="liranControlPanel">
         <div>Webhook URL: <span id="liranWebhook">—</span></div>
-        <div>Row 5 Data Found: <span id="liranRow5">—</span></div>
+        <div>Regex Image: <span id="liranRegexImage">—</span></div>
+        <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
         <div>B5 Link: <span id="liranB5">—</span></div>
         <div>D5 Text: <span id="liranD5">—</span></div>
     </div>
@@ -379,12 +380,13 @@
             return document.getElementById('generatedImage') || document.getElementById('mainImage');
         }
 
-        function updateLiranPanel(webhookStatus, row5Found, b5Preview, d5Preview) {
-            const panel = document.getElementById('liranControlPanel');
+        function updateLiranPanel(webhookStatus, regexImageFound, regexCaptionFound, b5Preview, d5Preview) {
+            var panel = document.getElementById('liranControlPanel');
             if (!panel) return;
-            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val || '—'; };
+            var set = function (id, val) { var el = document.getElementById(id); if (el) el.textContent = val !== undefined && val !== null && val !== '' ? val : '—'; };
             set('liranWebhook', webhookStatus != null ? (webhookStatus ? 'OK' : 'Missing') : '—');
-            set('liranRow5', row5Found != null ? (row5Found ? 'Yes' : 'No') : '—');
+            set('liranRegexImage', regexImageFound != null ? (regexImageFound ? 'Found' : 'Not Found') : '—');
+            set('liranRegexCaption', regexCaptionFound != null ? (regexCaptionFound ? 'Found' : 'Not Found') : '—');
             set('liranB5', b5Preview != null ? (b5Preview.length > 10 ? b5Preview.slice(0, 10) + '…' : b5Preview) || 'Missing' : '—');
             set('liranD5', d5Preview != null ? (d5Preview.length > 10 ? d5Preview.slice(0, 10) + '…' : d5Preview) || 'Missing' : '—');
         }
@@ -464,14 +466,34 @@
 
         function normalizeImageUrl(url) {
             if (!url) return url;
-            let u = String(url).trim();
-            if (u.includes('dropbox.com')) {
+            var u = String(url).trim();
+            if (u.indexOf('dropbox.com') !== -1) {
                 u = u.replace(/www\.dropbox\.com/g, 'dl.dropboxusercontent.com');
                 u = u.replace(/dropbox\.com/g, 'dl.dropboxusercontent.com');
-                if (u.includes('dl=0')) u = u.replace('dl=0', 'dl=1');
-                if (!/[?&]raw=1(?=&|$)/i.test(u)) u += (u.includes('?') ? '&' : '?') + 'raw=1';
+                if (u.indexOf('dl=0') !== -1) u = u.replace('dl=0', 'dl=1');
+                if (!/[?&]raw=1(?=&|$)/i.test(u)) u += (u.indexOf('?') !== -1 ? '&' : '?') + 'raw=1';
             }
             return u;
+        }
+
+        function extractImageUrlFromRaw(rawStr) {
+            if (typeof rawStr !== 'string' || !rawStr.trim()) return '';
+            var m = rawStr.match(/https?:\/\/www\.dropbox\.com\/[^\s"')\]]+/i) || rawStr.match(/https?:\/\/dl\.dropbox[^\s"')\]]+/i);
+            return m ? m[0].trim() : '';
+        }
+
+        function extractCaptionFromRaw(rawStr) {
+            if (typeof rawStr !== 'string' || !rawStr.trim()) return '';
+            var m = rawStr.match(/"caption"\s*:\s*"((?:[^"\\]|\\.)*?)"\s*,\s*"hashtags"/i) || rawStr.match(/"caption"\s*:\s*"((?:[^"\\]|\\.)*?)"/i);
+            if (!m || !m[1]) return '';
+            var s = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t');
+            return s.trim();
+        }
+
+        function extractStatusFromRaw(rawStr) {
+            if (typeof rawStr !== 'string' || !rawStr.trim()) return '';
+            var m = rawStr.match(/"J5"\s*:\s*"([^"]*)"/i) || rawStr.match(/"status"\s*:\s*"([^"]*)"/i);
+            return m && m[1] ? String(m[1]).trim() : '';
         }
 
         function extractFromRawResponse(rawStr) {
@@ -668,7 +690,7 @@
                 globalStatusBar.textContent = 'Waiting for action...';
                 globalStatusBar.classList.add('visible');
             }
-            updateLiranPanel(!!WEBHOOK_STATUS, null, null, null);
+            updateLiranPanel(!!WEBHOOK_STATUS, null, null, null, null);
         }
 
         // --- Scenarios: load from "Scenarios" sheet and group by category ---
@@ -968,55 +990,38 @@
             el.className = 'status-bar visible ' + type;
         }
 
-        // --- Live dashboard status polling (Victoria_Dashboard: J5 = status, B5 = image URL, D5 = caption) ---
+        // --- Live dashboard status polling: RAW STRING ONLY, no JSON.parse ---
         async function fetchDashboardStatus() {
-            const statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
+            var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
             if (!statusUrl || !globalStatusBar) return;
-            updateLiranPanel(!!statusUrl, null, null, null);
+            updateLiranPanel(!!statusUrl, null, null, null, null);
             try {
-                const res = await fetch(statusUrl);
+                var res = await fetch(statusUrl);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
 
-                const rawText = await res.text();
-                const extracted = extractFromRawResponse(rawText);
-                const rawUrl = extracted.url ? normalizeImageUrl(extracted.url) : '';
-                const rawHebrew = (extracted.hebrewText || '').trim();
+                var rawText = await res.text();
 
-                let data;
-                try {
-                    const sanitized = sanitizeJsonString(rawText);
-                    data = JSON.parse(sanitized);
-                } catch (parseErr) {
-                    updateLiranPanel(!!statusUrl, !!(rawUrl || rawHebrew), rawUrl ? rawUrl.slice(0, 20) : 'Missing', rawHebrew ? rawHebrew.slice(0, 20) : 'Missing');
-                    if (rawUrl) injectImageByPosition(rawUrl);
-                    if (rawHebrew) injectMarketingTextByPosition(rawHebrew);
-                    return;
+                var imageUrlRaw = extractImageUrlFromRaw(rawText);
+                var imageUrl = imageUrlRaw ? normalizeImageUrl(imageUrlRaw) : '';
+                var captionRaw = extractCaptionFromRaw(rawText);
+                var text = extractStatusFromRaw(rawText);
+
+                var regexImageFound = !!imageUrl;
+                var regexCaptionFound = !!(captionRaw && captionRaw.trim());
+                var b5Preview = imageUrl ? (imageUrl.length > 20 ? imageUrl.slice(0, 20) + '…' : imageUrl) : 'Missing';
+                var d5Preview = captionRaw ? (captionRaw.length > 20 ? captionRaw.slice(0, 20) + '…' : captionRaw) : 'Missing';
+                updateLiranPanel(!!statusUrl, regexImageFound, regexCaptionFound, b5Preview, d5Preview);
+
+                if (imageUrl) injectImageByPosition(imageUrl);
+                if (captionRaw && captionRaw.trim()) {
+                    var cleanCaption = captionRaw.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+                    injectMarketingTextByPosition(cleanCaption);
                 }
 
-                const textRaw = getCellValue(data, 'J5') ?? data.J5 ?? data.j5 ?? data.status ?? data.value ?? data.statusText ?? data.A2 ?? '';
-                const text = (textRaw !== undefined && textRaw !== null) ? String(textRaw).trim() : '';
-                const b5Raw = getCellValue(data, 'B5');
-                const d5Raw = getCellValue(data, 'D5');
-                const urlFromParsed = extractUrlFromB5(b5Raw);
-                const captionFromParsed = (d5Raw !== undefined && d5Raw !== null) ? String(d5Raw).trim() : '';
-                const row5Found = !!(text || urlFromParsed || captionFromParsed || rawUrl || rawHebrew);
-                const b5Preview = urlFromParsed || rawUrl || 'Missing';
-                const d5Preview = captionFromParsed || rawHebrew || 'Missing';
-                updateLiranPanel(!!statusUrl, row5Found, b5Preview, d5Preview);
-
-                if (row5Found) {
-                    var urlToInject = urlFromParsed || rawUrl;
-                    var captionToInject = captionFromParsed || rawHebrew;
-                    if (urlToInject) injectImageByPosition(urlToInject);
-                    if (captionToInject) injectMarketingTextByPosition(captionToInject);
-                }
-
-                // Reset stale timer whenever J5 content changes
                 if (text !== lastJ5Content) {
                     lastJ5Content = text;
                     lastJ5ChangeAt = Date.now();
                 }
-                // Timeout only if J5 has a value AND has stayed unchanged for 12 min (never timeout while J5 is empty)
                 if (userHasTriggeredGeneration && text && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > TIMEOUT_MS)) {
                     stopPersonaCycle();
                     if (statusPollingIntervalId) {
@@ -1029,23 +1034,20 @@
                 }
                 if (text === '' && !userHasTriggeredGeneration) return;
 
-                const trimmedText = text.trim();
-                const isDone = trimmedText.toUpperCase() === 'DONE';
+                var trimmedText = text.trim();
+                var isDone = trimmedText.toUpperCase() === 'DONE';
 
-                // Ignore stale DONE for 10s after button click
                 if (isDone && Date.now() < ignoreDoneUntil) return;
-
-                // Avoid re-processing same status
                 if (text === lastSeenStatus && isDone) return;
                 if (isDone) lastSeenStatus = text;
 
-                const handleCaptionPayload = (payloadText) => {
-                    const cleanText = (payloadText || '').toString().trim();
+                function handleCaptionPayload(payloadText) {
+                    var cleanText = (payloadText || '').toString().trim();
                     if (!cleanText) return;
                     stopPersonaCycle();
                     currentCaption = cleanText;
-                    const captionContainer = document.getElementById('captionBox');
-                    const captionArea = getMarketingTextEl();
+                    var captionContainer = document.getElementById('captionBox');
+                    var captionArea = getMarketingTextEl();
                     if (captionContainer) captionContainer.style.display = 'block';
                     if (captionArea) {
                         if (captionArea.tagName === 'TEXTAREA' || captionArea.tagName === 'INPUT') captionArea.value = cleanText;
@@ -1055,23 +1057,21 @@
                     if (resultImageEl) resultImageEl.classList.remove('shimmer');
                     globalStatusBar.textContent = '✓ Post Ready';
                     globalStatusBar.classList.add('visible');
-                    const step2Status = document.getElementById('step2Status');
+                    var step2Status = document.getElementById('step2Status');
                     if (step2Status) showStatus(step2Status, '✓ Post Ready', 'success');
                     if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                     setButtonLocked(telegramBtn, false);
-                    const finalTelegramBtn = document.getElementById('finalTelegram');
+                    var finalTelegramBtn = document.getElementById('finalTelegram');
                     if (finalTelegramBtn) { finalTelegramBtn.disabled = false; finalTelegramBtn.classList.remove('btn-locked'); }
                     setNextStepGlow(telegramBtn);
-                };
+                }
 
-                // J5 === 'DONE' → current process finished
                 if (isDone && userHasTriggeredGeneration) {
                     stopPersonaCycle();
                     if (generationPhase === 'image') {
-                        const urlToUse = urlFromParsed || rawUrl;
-                        if (urlToUse) {
-                            setGeneratedImageUrl(urlToUse);
-                            injectImageByPosition(urlToUse);
+                        if (imageUrl) {
+                            setGeneratedImageUrl(imageUrl);
+                            injectImageByPosition(imageUrl);
                         }
                         globalStatusBar.textContent = '✓ Image Ready';
                         globalStatusBar.classList.add('visible');
@@ -1079,10 +1079,10 @@
                         generationPhase = 'caption';
                         setNextStepGlow(captionBtn);
                     } else {
-                        const captionToUse = captionFromParsed || rawHebrew;
-                        if (captionToUse) {
-                            handleCaptionPayload(captionToUse);
-                            injectMarketingTextByPosition(captionToUse);
+                        if (captionRaw && captionRaw.trim()) {
+                            var cap = captionRaw.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+                            handleCaptionPayload(cap);
+                            injectMarketingTextByPosition(cap);
                         }
                         generationPhase = 'idle';
                     }
@@ -1090,9 +1090,8 @@
                     return;
                 }
 
-                // J5 is anything else: display that text in status bar (never show raw URL)
                 if (userHasTriggeredGeneration && text) {
-                    const looksLikeUrl = /^https?:\/\//i.test(text);
+                    var looksLikeUrl = /^https?:\/\//i.test(text);
                     globalStatusBar.textContent = looksLikeUrl ? '✓ Ready' : text;
                     globalStatusBar.classList.remove('persona-shimmer');
                     globalStatusBar.classList.add('visible');
