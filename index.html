@@ -239,6 +239,7 @@
     </main>
 
     <div class="liran-control-panel" id="liranControlPanel">
+        <div><strong>Watching Row 5 - Victoria_Dashboard</strong></div>
         <div>Webhook URL: <span id="liranWebhook">—</span></div>
         <div>Regex Image: <span id="liranRegexImage">—</span></div>
         <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
@@ -1077,7 +1078,37 @@
                 if (text === '' && !userHasTriggeredGeneration) return;
 
                 var trimmedText = text.trim();
-                var isDone = trimmedText.toUpperCase() === 'DONE';
+                var j5Upper = trimmedText.toUpperCase();
+                var isDone = j5Upper === 'DONE';
+                var isImageReady = j5Upper === 'IMAGE_READY';
+                var isStartingImage = j5Upper === 'STARTING_IMAGE_PROCESS';
+                var isGeneratingImage = j5Upper === 'GENERATING_IMAGE';
+
+                if (userHasTriggeredGeneration && globalStatusBar) {
+                    if (isStartingImage) {
+                        stopPersonaCycle();
+                        globalStatusBar.textContent = 'Victoria is starting...';
+                        globalStatusBar.classList.remove('persona-shimmer');
+                        globalStatusBar.classList.add('visible');
+                    } else if (isGeneratingImage) {
+                        stopPersonaCycle();
+                        globalStatusBar.textContent = 'Drawing your visual...';
+                        globalStatusBar.classList.remove('persona-shimmer');
+                        globalStatusBar.classList.add('visible');
+                    } else if (isImageReady) {
+                        stopPersonaCycle();
+                        if (imageUrl) {
+                            var urlFixed = normalizeImageUrl(imageUrl);
+                            setGeneratedImageUrl(urlFixed);
+                            injectImageByPosition(urlFixed);
+                        }
+                        globalStatusBar.textContent = '✓ Image Ready';
+                        globalStatusBar.classList.add('visible');
+                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                        setNextStepGlow(captionBtn);
+                        generationPhase = 'caption';
+                    }
+                }
 
                 if (isDone && Date.now() < ignoreDoneUntil) return;
                 if (text === lastSeenStatus && isDone) return;
