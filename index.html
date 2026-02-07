@@ -257,7 +257,28 @@
 
         function sanitizeJsonString(str) {
             if (typeof str !== 'string') return str;
-            return str.replace(/[\x00-\x1f\x7f]/g, ' ');
+            var s = str.replace(/[\x00-\x1f\x7f]/g, ' ');
+            var i = 0;
+            while (i < s.length) {
+                var colonQuote = s.indexOf('":', i);
+                if (colonQuote === -1) break;
+                var afterColon = colonQuote + 2;
+                var ws = s.substring(afterColon).match(/^\s*/);
+                var quoteStart = afterColon + (ws ? ws[0].length : 0);
+                if (s[quoteStart] !== '"') { i = afterColon; continue; }
+                var valStart = quoteStart + 1;
+                var j = valStart;
+                while (j < s.length) {
+                    if (s[j] === '\\') { j += 2; continue; }
+                    if (s[j] === '"') break;
+                    j++;
+                }
+                var val = s.substring(valStart, j);
+                var escaped = val.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                s = s.substring(0, valStart) + escaped + s.substring(j);
+                i = valStart + escaped.length + 1;
+            }
+            return s;
         }
 
         const VICTORIA_PHRASES = [
@@ -477,23 +498,28 @@
             return { url: url || '', hebrewText: hebrewText || '' };
         }
 
-        // Get raw value for a cell from dashboard response (Victoria_Dashboard row 5: B5, D5, J5)
+        // Get raw value from dashboard: explicitly prefer full rows array — Row 5 = index 4, Column B = 1, D = 3, J = 9
         function getCellValue(data, cellKey) {
             if (!data || typeof data !== 'object') return undefined;
-            const upper = cellKey.toUpperCase();
-            const lower = cellKey.toLowerCase();
-            const colIndex = { B: 1, D: 3, J: 9 }[upper];
-            const row5Index = 4;
+            var upper = cellKey.toUpperCase();
+            var lower = cellKey.toLowerCase();
+            var colIndex = { B: 1, D: 3, J: 9 }[upper];
+            var row5Index = 4;
 
-            let v = data[upper] ?? data[lower] ?? data[cellKey];
+            var v;
+            var row5 = data.values && data.values[row5Index];
+            if (Array.isArray(row5) && colIndex != null && row5[colIndex] !== undefined) return row5[colIndex];
+            row5 = data.rows && data.rows[row5Index];
+            if (Array.isArray(row5) && colIndex != null && row5[colIndex] !== undefined) return row5[colIndex];
+
+            v = data[upper] ?? data[lower] ?? data[cellKey];
             if (v !== undefined && v !== null) return v;
-            const out = data.output || data.result || data.data;
+            var out = data.output || data.result || data.data;
             if (out && typeof out === 'object') {
                 v = out[upper] ?? out[lower] ?? out[cellKey];
                 if (v !== undefined && v !== null) return v;
             }
-            // Explicit row 5: 5th row = index 4
-            const row5 = data.values?.[row5Index] ?? data.rows?.[row5Index] ?? data.row5 ?? data['5'] ?? data.row;
+            row5 = data.row5 ?? data['5'] ?? data.row;
             if (Array.isArray(row5) && colIndex != null && row5[colIndex] !== undefined) return row5[colIndex];
             if (row5 && typeof row5 === 'object' && !Array.isArray(row5)) {
                 v = row5[upper] ?? row5[lower] ?? row5[cellKey];
@@ -502,13 +528,15 @@
             return undefined;
         }
 
-        // Extract image URL from B5: handles plain URL or formula (e.g. IFERROR with link inside)
+        // Extract image URL from B5: plain URL, or formula like =IFERROR(IMAGE(...), extract Dropbox URL
         function extractUrlFromB5(raw) {
             if (raw === undefined || raw === null) return '';
-            const s = String(raw).trim();
+            var s = String(raw).trim();
             if (!s) return '';
-            const urlMatch = s.match(/https?:\/\/[^\s"')\]]+/i);
-            if (urlMatch) return urlMatch[0].trim();
+            var dropbox = s.match(/https?:\/\/(?:www\.)?dropbox\.com\/[^\s"')\]]+/i) || s.match(/https?:\/\/dl\.dropbox[^\s"')\]]+/i);
+            if (dropbox) return dropbox[0].trim();
+            var anyUrl = s.match(/https?:\/\/[^\s"')\]]+/i);
+            if (anyUrl) return anyUrl[0].trim();
             if (/^https?:\/\//i.test(s)) return s;
             return '';
         }
@@ -975,6 +1003,13 @@
                 const b5Preview = urlFromParsed || rawUrl || 'Missing';
                 const d5Preview = captionFromParsed || rawHebrew || 'Missing';
                 updateLiranPanel(!!statusUrl, row5Found, b5Preview, d5Preview);
+
+                if (row5Found) {
+                    var urlToInject = urlFromParsed || rawUrl;
+                    var captionToInject = captionFromParsed || rawHebrew;
+                    if (urlToInject) injectImageByPosition(urlToInject);
+                    if (captionToInject) injectMarketingTextByPosition(captionToInject);
+                }
 
                 // Reset stale timer whenever J5 content changes
                 if (text !== lastJ5Content) {
