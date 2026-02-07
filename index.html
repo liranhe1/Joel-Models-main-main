@@ -1538,21 +1538,6 @@
                 : 'Model: Victoria - Use Victoria\'s name and traits in the prompt.';
 
             const fixedUrl = modelUrl.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('dl=0', 'raw=1');
-                
-            const payload = {
-                source: 'Web_App',
-                product_id: selectedProduct.id,
-                rowNumber: selectedProduct.rowNumber,
-                product: selectedProduct.title,
-                model: selectedModel,
-                collection: selectedProduct.collection,
-                model_url: fixedUrl,
-                scene: formattedScene,
-                situation: formattedScene,
-                model_prompt: modelPrompt,
-                prompt: formattedScene,
-                command: 'Generate Caption'
-            };
 
             try {
                 stopPersonaCycle();
@@ -1567,7 +1552,7 @@
 
                 var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
                 if (statusUrl) {
-                    var d5PollMs = 3000;
+                    var d5PollMs = 2000;
                     var d5IntervalId = null;
                     var d5TimeoutId = setTimeout(function () {
                         if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
@@ -1598,6 +1583,30 @@
                     if (cardBody) cardBody.textContent = '';
                     if (cardEl) cardEl.classList.remove('post-loading');
                 }
+
+                var imgEl = getGeneratedImageEl();
+                var dispImageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
+                if (!dispImageUrl && imgEl && imgEl.getAttribute('src')) dispImageUrl = String(imgEl.getAttribute('src')).trim();
+                dispImageUrl = normalizeImageUrl(dispImageUrl);
+                var dispImageData = '';
+                if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) dispImageData = await getImageAsDataUrl(imgEl);
+
+                var payload = {
+                    source: 'Web_App',
+                    product_id: selectedProduct.id,
+                    rowNumber: selectedProduct.rowNumber,
+                    product: selectedProduct.title,
+                    model: selectedModel,
+                    collection: selectedProduct.collection,
+                    model_url: fixedUrl,
+                    scene: formattedScene,
+                    situation: formattedScene,
+                    model_prompt: modelPrompt,
+                    prompt: formattedScene,
+                    image_url: dispImageUrl,
+                    image_data: dispImageData,
+                    command: 'Generate Caption'
+                };
 
                 console.log('Caption request sent to', WEBHOOK_CAPTION, { product: selectedProduct.title, scene: formattedScene });
                 fetch(WEBHOOK_CAPTION, {
@@ -1663,6 +1672,7 @@
             var imgEl = getGeneratedImageEl();
             var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
             if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
+            imageUrl = normalizeImageUrl(imageUrl);
 
             var imageData = '';
             if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) {
