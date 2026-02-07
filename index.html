@@ -93,13 +93,14 @@
         .btn-instagram { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; opacity:0.5; cursor:not-allowed; }
         .caption-box { margin-top:15px; }
         .instagram-post-card {
-            background:#fff; border-radius:12px;
-            box-shadow:0 4px 20px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
-            padding:22px; max-height:320px; overflow-y:auto; direction:rtl; text-align:right;
+            background:#fff; border-radius:16px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
+            padding:20px; max-height:320px; overflow-y:auto; direction:rtl; text-align:right;
             font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:0.98rem; line-height:1.7;
             color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; unicode-bidi:plaintext;
         }
         .instagram-post-card .post-body { margin:0; }
+        .instagram-post-card.post-loading .post-body { color:#666; font-style:normal; }
         .caption-text { width:100%; min-height:80px; background:transparent; border:none; color:var(--white); font-family:inherit; font-size:0.95rem; line-height:1.6; resize:vertical; display:none; }
         .caption-text:focus { outline:none; }
 
@@ -1550,47 +1551,70 @@
                     body: JSON.stringify(payload)
                 });
 
-                var postText = '';
                 var rawText = '';
-                if (res.ok) {
-                    try {
-                        rawText = await res.text();
-                        console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
-                        var data = JSON.parse(sanitizeJsonString(rawText));
-                        postText = (data && (data.post_text || data.caption || data.text || data.captionText)) ? String(data.post_text || data.caption || data.text || data.captionText).trim() : '';
-                    } catch (e) { console.warn('Caption webhook parse failed.', e); }
-                }
+                try { rawText = await res.text(); } catch (e) {}
+                console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
 
-                if (!postText) {
-                    try {
-                        var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
-                        if (statusUrl) {
-                            var sr = await fetch(statusUrl);
-                            if (sr.ok) {
-                                var raw = await sr.text();
-                                var row5 = parseRow5Simple(raw);
-                                postText = (row5.post && String(row5.post).trim()) ? String(row5.post).trim() : '';
-                            }
-                        }
-                    } catch (e2) { console.warn('D5 fallback fetch failed.', e2); }
-                }
+                var webhookOk = res.ok;
+                var statusSuccess = false;
+                try {
+                    var data = JSON.parse(sanitizeJsonString(rawText || '{}'));
+                    statusSuccess = data && (String(data.status || '').toUpperCase() === 'SUCCESS' || data.success === true);
+                } catch (e) {}
 
                 stopPersonaCycle();
-                if (statusPollingIntervalId) {
-                    clearInterval(statusPollingIntervalId);
-                    statusPollingIntervalId = null;
-                }
+                if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
+                if (globalStatusBar) { globalStatusBar.textContent = ''; globalStatusBar.innerHTML = ''; globalStatusBar.className = 'status-bar'; globalStatusBar.classList.remove('visible', 'error', 'success'); globalStatusBar.style.display = 'none'; }
 
-                if (postText) {
+                if (webhookOk || statusSuccess) {
                     if (captionBox) captionBox.style.display = 'block';
-                    injectMarketingTextByPosition(postText);
-                    if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
-                    if (globalStatusBar) { globalStatusBar.textContent = ''; globalStatusBar.innerHTML = ''; globalStatusBar.className = 'status-bar'; globalStatusBar.classList.remove('visible', 'error', 'success'); globalStatusBar.style.display = 'none'; }
+                    var cardBody = document.getElementById('instagramPostBody');
+                    var cardEl = document.getElementById('instagramPostCard');
+                    if (cardBody) { cardBody.textContent = 'Victoria is crafting your story...'; cardBody.classList.add('post-loading'); }
+                    if (cardEl) cardEl.classList.add('post-loading');
+
+                    var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
+                    if (statusUrl) {
+                        var d5PollMs = 3000;
+                        var d5IntervalId = null;
+                        var d5TimeoutId = setTimeout(function () {
+                            if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
+                            if (cardBody && cardBody.textContent === 'Victoria is crafting your story...') {
+                                cardBody.textContent = '';
+                                if (cardEl) cardEl.classList.remove('post-loading');
+                            }
+                        }, 5 * 60 * 1000);
+
+                        var pollD5 = async function () {
+                            try {
+                                var sr = await fetch(statusUrl);
+                                if (!sr.ok) return;
+                                var raw = await sr.text();
+                                var row5 = parseRow5Simple(raw);
+                                var d5Text = (row5.post && String(row5.post).trim()) ? String(row5.post).trim() : '';
+                                if (d5Text) {
+                                    if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
+                                    clearTimeout(d5TimeoutId);
+                                    if (cardBody) { cardBody.textContent = d5Text; cardBody.classList.remove('post-loading'); }
+                                    if (cardEl) cardEl.classList.remove('post-loading');
+                                    injectMarketingTextByPosition(d5Text);
+                                    return;
+                                }
+                            } catch (e2) { console.warn('D5 poll failed', e2); }
+                        };
+                        pollD5();
+                        d5IntervalId = setInterval(pollD5, d5PollMs);
+                    } else {
+                        if (cardBody) cardBody.textContent = '';
+                        if (cardEl) cardEl.classList.remove('post-loading');
+                    }
                 } else {
-                    showStatus(status, res.ok ? 'Post not ready yet' : '✗ Error generating caption', 'error');
-                    setTimeout(function () {
-                        if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
-                    }, 2500);
+                    if (captionBox) captionBox.style.display = 'block';
+                    var bodyEl = document.getElementById('instagramPostBody');
+                    if (bodyEl) bodyEl.textContent = '';
+                    var cardE = document.getElementById('instagramPostCard');
+                    if (cardE) cardE.classList.remove('post-loading');
+                    if (status) { status.textContent = ''; status.style.display = 'none'; }
                 }
 
                 setButtonLocked(telegramBtn, false);
@@ -1611,7 +1635,6 @@
             if (!selectedProduct) return;
             const status = document.getElementById('step2Status');
             showStatus(status, '🚀 Sending to Telegram...');
-            telegramBtn.disabled = true;
             console.log('SENDING REQUEST FOR MODEL (telegram):', selectedModel);
 
             // Format scene as 'Category - Scene Name' instead of comma-separated
