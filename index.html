@@ -241,6 +241,7 @@
     <div class="liran-control-panel" id="liranControlPanel">
         <div><strong>Watching Row 5 - Victoria_Dashboard</strong></div>
         <div>Webhook URL: <span id="liranWebhook">—</span></div>
+        <div>Webhook Status: <span id="liranWebhookStatus">—</span></div>
         <div>Final URL: <span id="liranFinalUrl">—</span></div>
         <div>Regex Image: <span id="liranRegexImage">—</span></div>
         <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
@@ -493,6 +494,11 @@
         function setLiranFinalUrl(fixedUrl) {
             var el = document.getElementById('liranFinalUrl');
             if (el) el.textContent = fixedUrl ? (fixedUrl.length > 40 ? fixedUrl.slice(0, 40) + '…' : fixedUrl) : '—';
+        }
+
+        function setLiranWebhookStatus(msg) {
+            var el = document.getElementById('liranWebhookStatus');
+            if (el) el.textContent = msg !== undefined && msg !== null && msg !== '' ? msg : '—';
         }
 
         function extractImageUrlFromRaw(rawStr) {
@@ -1313,12 +1319,30 @@
                 if (!res.ok) {
                     showStatus(statusBar, '✗ Error sending image request', 'error');
                 } else {
-                    let data = null;
-                    let rawText = await res.text();
-                    const rawTrimmed = (rawText || '').trim();
+                    var data = null;
+                    var rawText = await res.text();
+                    var rawTrimmed = (rawText || '').trim();
                     console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
 
-                    if (rawTrimmed === 'Accepted') {
+                    try {
+                        data = JSON.parse(sanitizeJsonString(rawText));
+                    } catch (e) { data = null; }
+                    var webhookImageUrl = data && (data.image_url || data.imageUrl || (data.output && (data.output.image_url || data.output.imageUrl)));
+                    var webhookStatus = data && (data.status || (data.output && data.output.status));
+                    var isImageReady = webhookStatus && String(webhookStatus).toUpperCase() === 'IMAGE_READY';
+                    if (webhookImageUrl && isImageReady) {
+                        var urlFixed = normalizeImageUrl(String(webhookImageUrl).trim());
+                        if (imageSpinner) imageSpinner.style.display = 'none';
+                        if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
+                        setGeneratedImageUrl(urlFixed);
+                        injectImageByPosition(urlFixed);
+                        setLiranWebhookStatus('Received Image URL');
+                        stopPersonaCycle();
+                        if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
+                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                        setNextStepGlow(captionBtn);
+                        generationPhase = 'caption';
+                    } else if (rawTrimmed === 'Accepted') {
                         showStatus(statusBar, 'Request accepted, polling for image...', 'success');
                         const statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
                         if (statusUrl) {
