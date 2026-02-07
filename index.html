@@ -93,9 +93,10 @@
         .btn-instagram { background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color:white; opacity:0.5; cursor:not-allowed; }
         .caption-box { margin-top:15px; }
         .instagram-post-card {
-            background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06);
-            padding:20px; max-height:280px; overflow-y:auto; direction:rtl; text-align:right;
-            font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:0.95rem; line-height:1.65;
+            background:#fff; border-radius:12px;
+            box-shadow:0 4px 20px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+            padding:22px; max-height:320px; overflow-y:auto; direction:rtl; text-align:right;
+            font-family:'Segoe UI', system-ui, -apple-system, sans-serif; font-size:0.98rem; line-height:1.7;
             color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; unicode-bidi:plaintext;
         }
         .instagram-post-card .post-body { margin:0; }
@@ -1586,7 +1587,10 @@
                     if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
                     if (globalStatusBar) { globalStatusBar.textContent = ''; globalStatusBar.innerHTML = ''; globalStatusBar.className = 'status-bar'; globalStatusBar.classList.remove('visible', 'error', 'success'); globalStatusBar.style.display = 'none'; }
                 } else {
-                    showStatus(status, res.ok ? '✗ No post text in response' : '✗ Error generating caption', 'error');
+                    showStatus(status, res.ok ? 'Post not ready yet' : '✗ Error generating caption', 'error');
+                    setTimeout(function () {
+                        if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
+                    }, 2500);
                 }
 
                 setButtonLocked(telegramBtn, false);
@@ -1623,10 +1627,11 @@
 
             const marketingEl = getMarketingTextEl();
             const captionValue = currentCaption || (marketingEl && (marketingEl.value !== undefined ? marketingEl.value : marketingEl.innerText)) || '';
-            const imgEl = getGeneratedImageEl();
-            const imageUrl = currentImageUrl || (imgEl && imgEl.src ? imgEl.src : '');
+            var imgEl = getGeneratedImageEl();
+            var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : (currentImageUrl || '');
+            if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
 
-            const payload = {
+            var payload = {
                 source: 'Web_App',
                 product_id: selectedProduct.id,
                 rowNumber: selectedProduct.rowNumber,
@@ -1635,7 +1640,7 @@
                 collection: selectedProduct.collection,
                 model_url: modelUrl,
                 scene: formattedScene,
-                situation: formattedScene, // Add situation field with formatted value
+                situation: formattedScene,
                 caption: captionValue,
                 image_url: imageUrl,
                 command: 'Approve & Post'
