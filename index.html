@@ -1622,6 +1622,24 @@
             }
         }
 
+        function getImageAsDataUrl(img) {
+            return new Promise(function (resolve) {
+                if (!img || !img.src) { resolve(''); return; }
+                var src = String(img.src).trim();
+                if (src.indexOf('data:') === 0) { resolve(src); return; }
+                fetch(src, { mode: 'cors' }).then(function (res) {
+                    if (!res.ok) { resolve(''); return; }
+                    return res.blob();
+                }).then(function (blob) {
+                    if (!blob) { resolve(''); return; }
+                    var r = new FileReader();
+                    r.onload = function () { resolve(r.result || ''); };
+                    r.onerror = function () { resolve(''); };
+                    r.readAsDataURL(blob);
+                }).catch(function () { resolve(''); });
+            });
+        }
+
         async function sendToTelegram() {
             if (!selectedProduct) return;
             const status = document.getElementById('step2Status');
@@ -1646,7 +1664,11 @@
             var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
             if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
 
-            /* Scenario C (Make) must use this image_url – do not read from Google Sheets */
+            var imageData = '';
+            if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) {
+                imageData = await getImageAsDataUrl(imgEl);
+            }
+
             var payload = {
                 source: 'Web_App',
                 product_id: selectedProduct.id,
@@ -1659,6 +1681,7 @@
                 situation: formattedScene,
                 caption: captionValue,
                 image_url: imageUrl,
+                image_data: imageData,
                 command: 'Approve & Post'
             };
 
