@@ -1109,10 +1109,11 @@
 
                 var rawText = await res.text();
 
-                var imageUrlRaw = extractImageUrlFromRaw(rawText);
+                var row5 = parseRow5Simple(rawText);
+                var imageUrlRaw = (row5.image && String(row5.image).trim().toLowerCase().startsWith('http')) ? String(row5.image).trim() : extractImageUrlFromRaw(rawText);
                 var imageUrl = imageUrlRaw ? normalizeImageUrl(imageUrlRaw) : '';
-                var captionRaw = extractCaptionFromRaw(rawText);
-                var text = extractStatusFromRaw(rawText);
+                var captionRaw = (row5.post && row5.post.trim()) ? row5.post.trim() : extractCaptionFromRaw(rawText);
+                var text = (row5.status && row5.status.trim()) ? row5.status.trim() : extractStatusFromRaw(rawText);
 
                 var regexImageFound = !!imageUrl;
                 var regexCaptionFound = !!(captionRaw && captionRaw.trim());
@@ -1120,7 +1121,11 @@
                 var d5Preview = captionRaw ? (captionRaw.length > 20 ? captionRaw.slice(0, 20) + '…' : captionRaw) : 'Missing';
                 updateLiranPanel(!!statusUrl, regexImageFound, regexCaptionFound, b5Preview, d5Preview);
 
-                if (imageUrl) injectImageByPosition(imageUrl);
+                if (imageUrl) {
+                    injectImageByPosition(imageUrl);
+                    var dropboxLink = document.getElementById('imgDropboxLink');
+                    if (dropboxLink) dropboxLink.href = imageUrl;
+                }
                 if (captionRaw && captionRaw.trim()) {
                     var cleanCaption = captionRaw.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
                     injectMarketingTextByPosition(cleanCaption);
@@ -1267,8 +1272,6 @@
             setNextStepGlow(null);
             if (captionText) captionText.value = '';
             if (captionBox) captionBox.style.display = 'none';
-            setButtonLocked(captionBtn, true);
-            setButtonLocked(telegramBtn, true);
             const finalT = document.getElementById('finalTelegram');
             if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
             if (statusBar) { statusBar.textContent = ''; statusBar.className = 'status-bar'; }
@@ -1298,11 +1301,15 @@
             showStatus(statusBar, '⚙️ Generating image...');
             generateBtn.disabled = true;
 
-            // Prepare live image placeholder + shimmer
+            // Immediate unlock: Liran can work without waiting for webhook
+            if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+            setButtonLocked(telegramBtn, false);
+
+            // Prepare live image placeholder + shimmer; show Dropbox link while loading
             if (imageSpinner) imageSpinner.style.display = 'block';
             if (imagePlaceholder) {
                 imagePlaceholder.style.display = 'block';
-                imagePlaceholder.textContent = 'Image generation in progress...';
+                imagePlaceholder.innerHTML = 'Image generation in progress. <a href="#" id="imgDropboxLink" target="_blank" rel="noopener" style="color:var(--gold);">לחץ כאן לצפייה בתמונה בדרופבוקס</a>';
             }
             if (resultImageEl) resultImageEl.classList.add('shimmer');
 
@@ -1407,7 +1414,9 @@
                                     var j5Text = (row5.status || '').trim();
                                     var b5Val = (row5.image || '').trim();
                                     var isImageUrl = b5Val && b5Val.toLowerCase().startsWith('http');
-                                    if (j5Text && isImageUrl) {
+                                    var linkEl = document.getElementById('imgDropboxLink');
+                                    if (linkEl && b5Val && b5Val.toLowerCase().startsWith('http')) linkEl.href = normalizeImageUrl(b5Val);
+                                    if (isImageUrl) {
                                         if (emergencyIntervalId) { clearInterval(emergencyIntervalId); emergencyIntervalId = null; }
                                         var urlFixed = normalizeImageUrl(b5Val);
                                         if (imageSpinner) imageSpinner.style.display = 'none';
