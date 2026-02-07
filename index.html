@@ -335,16 +335,47 @@
         function normalizeImageUrl(url) {
             if (!url) return url;
             let u = String(url).trim();
-            // Dropbox share links often return HTML; convert to direct download so <img> can render it.
+            // Dropbox: use direct display URL and ensure raw=1
             if (u.includes('dropbox.com')) {
-                // Normalize query params: dl=0 -> dl=1
+                u = u.replace(/www\.dropbox\.com/g, 'dl.dropboxusercontent.com');
                 if (u.includes('dl=0')) u = u.replace('dl=0', 'dl=1');
-                // If no dl/raw param exists, append raw=1
                 if (!/[?&](dl|raw)=/i.test(u)) {
                     u += (u.includes('?') ? '&' : '?') + 'raw=1';
                 }
             }
             return u;
+        }
+
+        // Get raw value for a cell from dashboard response (handles flat keys, nested output, or row arrays)
+        function getCellValue(data, cellKey) {
+            if (!data || typeof data !== 'object') return undefined;
+            const upper = cellKey.toUpperCase();
+            const lower = cellKey.toLowerCase();
+            let v = data[upper] ?? data[lower] ?? data[cellKey];
+            if (v !== undefined && v !== null) return v;
+            const out = data.output || data.result || data.data;
+            if (out && typeof out === 'object') {
+                v = out[upper] ?? out[lower] ?? out[cellKey];
+                if (v !== undefined && v !== null) return v;
+            }
+            // Row array: row 5 = index 4; B=1, D=3, J=9
+            const row = data.values?.[4] || data.rows?.[4] || data.row;
+            if (Array.isArray(row)) {
+                const colIndex = { B: 1, D: 3, J: 9 }[upper];
+                if (colIndex != null && row[colIndex] !== undefined) return row[colIndex];
+            }
+            return undefined;
+        }
+
+        // Extract image URL from B5: handles plain URL or formula (e.g. IFERROR with link inside)
+        function extractUrlFromB5(raw) {
+            if (raw === undefined || raw === null) return '';
+            const s = String(raw).trim();
+            if (!s) return '';
+            const urlMatch = s.match(/https?:\/\/[^\s"')\]]+/i);
+            if (urlMatch) return urlMatch[0].trim();
+            if (/^https?:\/\//i.test(s)) return s;
+            return '';
         }
 
         function setGeneratedImageUrl(url) {
@@ -788,9 +819,9 @@
                     console.error('Status webhook did not return valid JSON:', parseErr);
                     return;
                 }
-                // J5 = status cell (source of truth)
-                const textRaw = data.J5 || data.j5 || data.status || data.value || data.statusText || data.A2 || '';
-                const text = (textRaw || '').toString().trim();
+                // J5 = status cell (source of truth) — direct cell mapping with fallbacks
+                const textRaw = getCellValue(data, 'J5') ?? data.J5 ?? data.j5 ?? data.status ?? data.value ?? data.statusText ?? data.A2 ?? '';
+                const text = (textRaw !== undefined && textRaw !== null) ? String(textRaw).trim() : '';
 
                 // Reset stale timer whenever J5 content changes
                 if (text !== lastJ5Content) {
@@ -846,8 +877,9 @@
                 if (isDone && userHasTriggeredGeneration) {
                     stopPersonaCycle();
                     if (generationPhase === 'image') {
-                        // Image stage: URL from B5 only
-                        const urlFromSheet = (data.B5 || data.b5 || '').toString().trim();
+                        // Image stage: URL from B5 (raw value or formula with HTTPS link)
+                        const b5Raw = getCellValue(data, 'B5');
+                        const urlFromSheet = extractUrlFromB5(b5Raw);
                         if (urlFromSheet) setGeneratedImageUrl(urlFromSheet);
                         globalStatusBar.textContent = '✓ Image Ready';
                         globalStatusBar.classList.add('visible');
@@ -856,8 +888,9 @@
                         setNextStepGlow(captionBtn);
                         // Telegram stays locked until post is done
                     } else {
-                        // Post stage: caption from D5 only
-                        const captionFromD5 = (data.D5 || data.d5 || '').toString().trim();
+                        // Post stage: caption from D5 (full string into marketing text container)
+                        const d5Raw = getCellValue(data, 'D5');
+                        const captionFromD5 = (d5Raw !== undefined && d5Raw !== null) ? String(d5Raw).trim() : '';
                         if (captionFromD5) handleCaptionPayload(captionFromD5);
                         generationPhase = 'idle';
                     }
