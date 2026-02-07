@@ -1511,12 +1511,7 @@
 
         async function generateCaption() {
             if (!selectedProduct) return;
-            // During action: disable button immediately, 10s ignore DONE, status = Processing...
-            if (captionBtn) {
-                captionBtn.disabled = true;
-                captionBtn.classList.add('btn-locked');
-                captionBtn.textContent = 'Generating Caption...';
-            }
+            if (captionBtn) captionBtn.textContent = 'Generating Caption...';
             ignoreDoneUntil = Date.now() + 10000;
             lastSeenStatus = '';
             lastJ5Content = '';
@@ -1560,76 +1555,58 @@
             };
 
             try {
-                console.log('Caption request sent to', WEBHOOK_CAPTION, { product: selectedProduct.title, scene: formattedScene });
-                const res = await fetch(WEBHOOK_CAPTION, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                var rawText = '';
-                try { rawText = await res.text(); } catch (e) {}
-                console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
-
-                var webhookOk = res.ok;
-                var statusSuccess = false;
-                try {
-                    var data = JSON.parse(sanitizeJsonString(rawText || '{}'));
-                    statusSuccess = data && (String(data.status || '').toUpperCase() === 'SUCCESS' || data.success === true);
-                } catch (e) {}
-
                 stopPersonaCycle();
                 if (status) { status.textContent = ''; status.className = 'status-bar'; status.style.display = 'none'; }
                 if (globalStatusBar) { globalStatusBar.textContent = ''; globalStatusBar.innerHTML = ''; globalStatusBar.className = 'status-bar'; globalStatusBar.classList.remove('visible', 'error', 'success'); globalStatusBar.style.display = 'none'; }
 
-                if (webhookOk || statusSuccess) {
-                    if (captionBox) captionBox.style.display = 'block';
-                    var cardBody = document.getElementById('instagramPostBody');
-                    var cardEl = document.getElementById('instagramPostCard');
-                    if (cardBody) { cardBody.textContent = 'Victoria is crafting your story...'; cardBody.classList.add('post-loading'); }
-                    if (cardEl) cardEl.classList.add('post-loading');
+                if (captionBox) captionBox.style.display = 'block';
+                var cardBody = document.getElementById('instagramPostBody');
+                var cardEl = document.getElementById('instagramPostCard');
+                if (cardBody) { cardBody.textContent = 'Victoria is crafting your story...'; cardBody.classList.add('post-loading'); }
+                if (cardEl) cardEl.classList.add('post-loading');
 
-                    var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
-                    if (statusUrl) {
-                        var d5PollMs = 3000;
-                        var d5IntervalId = null;
-                        var d5TimeoutId = setTimeout(function () {
-                            if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
-                            if (cardBody && cardBody.textContent === 'Victoria is crafting your story...') {
-                                cardBody.textContent = '';
-                                if (cardEl) cardEl.classList.remove('post-loading');
+                var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
+                if (statusUrl) {
+                    var d5PollMs = 3000;
+                    var d5IntervalId = null;
+                    var d5TimeoutId = setTimeout(function () {
+                        if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
+                        if (cardBody && cardBody.textContent === 'Victoria is crafting your story...') {
+                            cardBody.textContent = '';
+                            if (cardEl) cardEl.classList.remove('post-loading');
+                        }
+                    }, 5 * 60 * 1000);
+
+                    var pollD5 = async function () {
+                        try {
+                            var sr = await fetch(statusUrl);
+                            if (!sr.ok) return;
+                            var raw = await sr.text();
+                            var row5 = parseRow5Simple(raw);
+                            var d5Text = (row5.post && String(row5.post).trim()) ? String(row5.post).trim() : '';
+                            if (d5Text) {
+                                if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
+                                clearTimeout(d5TimeoutId);
+                                injectMarketingTextByPosition(d5Text);
+                                return;
                             }
-                        }, 5 * 60 * 1000);
-
-                        var pollD5 = async function () {
-                            try {
-                                var sr = await fetch(statusUrl);
-                                if (!sr.ok) return;
-                                var raw = await sr.text();
-                                var row5 = parseRow5Simple(raw);
-                                var d5Text = (row5.post && String(row5.post).trim()) ? String(row5.post).trim() : '';
-                                if (d5Text) {
-                                    if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
-                                    clearTimeout(d5TimeoutId);
-                                    injectMarketingTextByPosition(d5Text);
-                                    return;
-                                }
-                            } catch (e2) { console.warn('D5 poll failed', e2); }
-                        };
-                        pollD5();
-                        d5IntervalId = setInterval(pollD5, d5PollMs);
-                    } else {
-                        if (cardBody) cardBody.textContent = '';
-                        if (cardEl) cardEl.classList.remove('post-loading');
-                    }
+                        } catch (e2) { console.warn('D5 poll failed', e2); }
+                    };
+                    pollD5();
+                    d5IntervalId = setInterval(pollD5, d5PollMs);
                 } else {
-                    if (captionBox) captionBox.style.display = 'block';
-                    var bodyEl = document.getElementById('instagramPostBody');
-                    if (bodyEl) bodyEl.textContent = '';
-                    var cardE = document.getElementById('instagramPostCard');
-                    if (cardE) cardE.classList.remove('post-loading');
-                    if (status) { status.textContent = ''; status.style.display = 'none'; }
+                    if (cardBody) cardBody.textContent = '';
+                    if (cardEl) cardEl.classList.remove('post-loading');
                 }
+
+                console.log('Caption request sent to', WEBHOOK_CAPTION, { product: selectedProduct.title, scene: formattedScene });
+                fetch(WEBHOOK_CAPTION, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(function (res) { return res.text(); }).then(function (rawText) {
+                    console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
+                }).catch(function (e) { console.warn('Caption webhook send failed', e); });
 
                 setButtonLocked(telegramBtn, false);
                 var ft = document.getElementById('finalTelegram');
@@ -1666,9 +1643,10 @@
             var cardBodyEl = document.getElementById('instagramPostBody');
             const captionValue = currentCaption || (marketingEl && (marketingEl.value !== undefined ? marketingEl.value : marketingEl.innerText)) || (cardBodyEl && cardBodyEl.innerText && String(cardBodyEl.innerText).trim()) || '';
             var imgEl = getGeneratedImageEl();
-            var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : (currentImageUrl || '');
+            var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
             if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
 
+            /* Scenario C (Make) must use this image_url – do not read from Google Sheets */
             var payload = {
                 source: 'Web_App',
                 product_id: selectedProduct.id,
