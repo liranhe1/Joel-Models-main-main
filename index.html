@@ -127,7 +127,18 @@
         .status-bar.success { background:rgba(80,200,120,0.1); color:var(--emerald); }
 
         .loading-spinner { width:40px; height:40px; border:3px solid var(--glass); border-top-color:var(--gold); border-radius:50%; animation:spin 1s linear infinite; }
+        .loading-spinner.small { width:24px; height:24px; border-width:2px; }
+        .btn-spinner-wrap { display:inline-flex; align-items:center; }
         @keyframes spin { to{transform:rotate(360deg)} }
+
+        .post-preview-card {
+            background:#fff; border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,0.08); overflow:hidden; margin-top:20px; max-width:400px;
+            font-family:'Segoe UI',system-ui,sans-serif; direction:rtl; text-align:right;
+        }
+        .post-preview-brand { padding:14px 20px; font-weight:700; font-size:0.95rem; color:#1a1a1a; border-bottom:1px solid #eee; }
+        .post-preview-image-wrap { width:100%; aspect-ratio:1; background:#f5f5f5; }
+        .post-preview-image-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+        .post-preview-caption { padding:20px; font-size:0.95rem; line-height:1.65; color:#1a1a1a; white-space:pre-wrap; word-wrap:break-word; }
 
         ::-webkit-scrollbar { width:6px; }
         ::-webkit-scrollbar-track { background:var(--black); }
@@ -223,9 +234,16 @@
                     </div>
                     <div class="result-actions">
                         <button type="button" class="action-btn btn-caption" id="captionBtn" disabled>📝 Generate Marketing Post</button>
+                        <span class="btn-spinner-wrap" id="captionSpinnerWrap" style="display:none;"><span class="loading-spinner small" id="captionSpinner"></span></span>
                         <button class="action-btn btn-telegram" id="telegramBtn" disabled>🚀 Send to Telegram</button>
+                        <span class="btn-spinner-wrap" id="telegramSpinnerWrap" style="display:none;"><span class="loading-spinner small" id="telegramSpinner"></span></span>
                         <button class="action-btn btn-instagram" disabled>📸 Instagram (Soon)</button>
                     </div>
+                </div>
+                <div class="post-preview-card" id="postPreviewCard" style="display:none;">
+                    <div class="post-preview-brand" id="postPreviewBrand">JOEL</div>
+                    <div class="post-preview-image-wrap" id="postPreviewImageWrap"></div>
+                    <div class="post-preview-caption" id="postPreviewCaption"></div>
                 </div>
                 <div class="caption-box" id="captionBox" style="display:none">
                     <div class="instagram-post-card" id="instagramPostCard">
@@ -266,13 +284,14 @@
 
     <script src="products_verified.js"></script>
     <script>
-        const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
-        const WEBHOOK_CAPTION = 'https://hook.eu2.make.com/rseu4bjldsj15cm12wx0otg620ahrv67';
-        // TODO: replace these with your real webhooks/endpoints
-        // that read from the "Scenarios" and "Dashboard" sheets.
-        const WEBHOOK_SCENARIOS = 'https://hook.eu2.make.com/sm6zjl2q1vjzsc4pu4xqd8wx318wpr73'; // e.g. 'https://hook.eu2.make.com/your-scenarios-webhook'
-        const WEBHOOK_STATUS = 'https://hook.eu2.make.com/kayjcpyyjjx4rudihs3yz715jip8u1w7';    // e.g. 'https://hook.eu2.make.com/your-dashboard-status-webhook'
+        const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
+        const WEBHOOK_IMAGE = MAKE_WEBHOOK_URL;
+        const WEBHOOK_CAPTION = MAKE_WEBHOOK_URL;
+        const WEBHOOK_SCENARIOS = 'https://hook.eu2.make.com/sm6zjl2q1vjzsc4pu4xqd8wx318wpr73';
+        const WEBHOOK_STATUS = 'https://hook.eu2.make.com/kayjcpyyjjx4rudihs3yz715jip8u1w7';
         if (typeof window !== 'undefined') window.lastWebhookUrl = WEBHOOK_STATUS;
+
+        var appState = 'studio';
 
         function sanitizeJsonString(str) {
             if (typeof str !== 'string') return str;
@@ -485,6 +504,7 @@
                 currentImageUrl = u;
             }
             if (container) container.classList.remove('shimmer');
+            updatePostPreview();
         }
 
         function escapeHtmlForPost(str) {
@@ -502,6 +522,9 @@
                 else el.innerText = clean;
             }
             currentCaption = clean;
+            var captionSpinnerWrap = document.getElementById('captionSpinnerWrap');
+            if (captionSpinnerWrap) captionSpinnerWrap.style.display = 'none';
+            if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
             var cardBody = document.getElementById('instagramPostBody');
             if (cardBody) {
                 var lines = clean.split('\n');
@@ -514,6 +537,9 @@
             if (cardEl) cardEl.classList.remove('post-loading');
             const captionBox = document.querySelector('.caption-box');
             if (captionBox) captionBox.style.display = 'block';
+            appState = 'ready';
+            updateTelegramButtonState();
+            updatePostPreview();
         }
 
         function normalizeImageUrl(url) {
@@ -725,6 +751,39 @@
             else el.classList.remove('btn-locked');
         }
 
+        function updateTelegramButtonState() {
+            var imgEl = getGeneratedImageEl();
+            var hasImage = !!(currentImageUrl || (imgEl && (imgEl.src || imgEl.getAttribute('src'))));
+            var hasCaption = !!(currentCaption && String(currentCaption).trim());
+            var enable = hasImage && hasCaption;
+            if (telegramBtn) setButtonLocked(telegramBtn, !enable);
+            var ft = document.getElementById('finalTelegram');
+            if (ft) { ft.disabled = !enable; if (enable) ft.classList.remove('btn-locked'); else ft.classList.add('btn-locked'); }
+        }
+
+        function updatePostPreview() {
+            var card = document.getElementById('postPreviewCard');
+            if (!card) return;
+            var brandEl = document.getElementById('postPreviewBrand');
+            var imgWrap = document.getElementById('postPreviewImageWrap');
+            var capEl = document.getElementById('postPreviewCaption');
+            var imgEl = getGeneratedImageEl();
+            var imgSrc = currentImageUrl || (imgEl && (imgEl.src || imgEl.getAttribute('src')));
+            var cap = currentCaption && String(currentCaption).trim();
+            if (brandEl) brandEl.textContent = (selectedProduct && selectedProduct.collection) ? selectedProduct.collection : 'JOEL';
+            if (imgWrap) {
+                imgWrap.innerHTML = '';
+                if (imgSrc) {
+                    var im = document.createElement('img');
+                    im.src = imgSrc;
+                    im.alt = 'Post';
+                    imgWrap.appendChild(im);
+                }
+            }
+            if (capEl) capEl.textContent = cap || '';
+            card.style.display = (imgSrc || cap) ? 'block' : 'none';
+        }
+
         function showCreditWarning() {
             if (globalStatusBar) {
                 globalStatusBar.textContent = CREDITS_PAUSED_MSG;
@@ -771,6 +830,8 @@
             currentImageUrl = null;
             if (captionText) captionText.value = '';
             if (captionBox) captionBox.style.display = 'none';
+            updatePostPreview();
+            updateTelegramButtonState();
             if (globalStatusBar) {
                 globalStatusBar.textContent = '';
                 globalStatusBar.innerHTML = '';
@@ -818,6 +879,8 @@
             if (telegramBtn) setButtonLocked(telegramBtn, true);
             const finalT = document.getElementById('finalTelegram');
             if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
+            updateTelegramButtonState();
+            updatePostPreview();
             if (globalStatusBar) {
                 globalStatusBar.textContent = 'Waiting for action...';
                 globalStatusBar.classList.add('visible');
@@ -1229,8 +1292,7 @@
                     if (step2Status) showStatus(step2Status, '✓ Post Ready', 'success');
                     if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                     setButtonLocked(telegramBtn, false);
-                    var finalTelegramBtn = document.getElementById('finalTelegram');
-                    if (finalTelegramBtn) { finalTelegramBtn.disabled = false; finalTelegramBtn.classList.remove('btn-locked'); }
+                    updateTelegramButtonState();
                     setNextStepGlow(telegramBtn);
                 }
 
@@ -1334,7 +1396,7 @@
 
             // Immediate unlock: Liran can work without waiting for webhook
             if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
-            setButtonLocked(telegramBtn, false);
+            updateTelegramButtonState();
 
             // Prepare live image placeholder + shimmer; show Dropbox link while loading
             if (imageSpinner) imageSpinner.style.display = 'block';
@@ -1362,38 +1424,37 @@
                 ? 'Model: Alma - A glamorous, captivating woman with exotic features. Use Alma\'s name and traits in the prompt.'
                 : 'Model: Victoria - Use Victoria\'s name and traits in the prompt.';
 
+            const aspectRatioVal = document.getElementById('aspectRatio') ? document.getElementById('aspectRatio').value : '1:1';
+            const creativityLevelVal = document.getElementById('creativityLevel') ? parseInt(document.getElementById('creativityLevel').value, 10) : 5;
+            const brand = (selectedProduct && selectedProduct.collection) ? selectedProduct.collection : (collectionBadge ? collectionBadge.textContent : 'JOEL');
+
             const payload = {
-                source: 'Web_App',
+                command: 'Generate Image',
                 product_id: selectedProduct.id,
-                rowNumber: selectedProduct.rowNumber,
-                product: selectedProduct.title,
-                model: selectedModel,
-                collection: selectedProduct.collection,
-                model_url: modelUrl,
                 scene: formattedScene,
-                situation: formattedScene, // Add situation field with formatted value
-                aspect_ratio: document.getElementById('aspectRatio').value,
-                creativity: parseInt(document.getElementById('creativityLevel').value),
-                model_prompt: modelPrompt,
-                scale_law: 'The jewelry must be visually reduced by 500% to stay dainty and realistic. Use delicate proportions.',
-                command: 'Generate Image'
+                aspect_ratio: aspectRatioVal,
+                creativity_level: creativityLevelVal,
+                brand: brand
             };
 
             try {
-                console.log('Request sent'); // Log to console when webhook is triggered
-                const res = await fetch(WEBHOOK_IMAGE, {
+                console.log('Sending command:', payload.command);
+                const res = await fetch(MAKE_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
+                var rawText = await res.text();
+                var data = null;
+                try { data = JSON.parse(sanitizeJsonString(rawText)); } catch (e) { data = null; }
+                console.log('Webhook response:', data !== null ? data : rawText);
+
                 if (!res.ok) {
                     showStatus(statusBar, '✗ Error sending image request', 'error');
                 } else {
-                    var data = null;
-                    var rawText = await res.text();
+                    appState = 'copywriter';
                     var rawTrimmed = (rawText || '').trim();
-                    console.log('RAW_TEXT_FROM_IMAGE_WEBHOOK:', rawText);
 
                     try {
                         data = JSON.parse(sanitizeJsonString(rawText));
@@ -1511,7 +1572,9 @@
 
         async function generateCaption() {
             if (!selectedProduct) return;
-            if (captionBtn) captionBtn.textContent = 'Generating Caption...';
+            var captionSpinnerWrap = document.getElementById('captionSpinnerWrap');
+            if (captionSpinnerWrap) captionSpinnerWrap.style.display = 'inline-flex';
+            if (captionBtn) { setButtonLocked(captionBtn, true); captionBtn.textContent = 'Generating Caption...'; }
             ignoreDoneUntil = Date.now() + 10000;
             lastSeenStatus = '';
             lastJ5Content = '';
@@ -1560,6 +1623,9 @@
                             cardBody.textContent = '';
                             if (cardEl) cardEl.classList.remove('post-loading');
                         }
+                        var wrap = document.getElementById('captionSpinnerWrap');
+                        if (wrap) wrap.style.display = 'none';
+                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                     }, 5 * 60 * 1000);
 
                     var pollD5 = async function () {
@@ -1582,6 +1648,9 @@
                 } else {
                     if (cardBody) cardBody.textContent = '';
                     if (cardEl) cardEl.classList.remove('post-loading');
+                    var wrap = document.getElementById('captionSpinnerWrap');
+                    if (wrap) wrap.style.display = 'none';
+                    if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                 }
 
                 var imgEl = getGeneratedImageEl();
@@ -1591,43 +1660,31 @@
                 var dispImageData = '';
                 if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) dispImageData = await getImageAsDataUrl(imgEl);
 
-                var payload = {
-                    source: 'Web_App',
-                    product_id: selectedProduct.id,
-                    rowNumber: selectedProduct.rowNumber,
-                    product: selectedProduct.title,
-                    model: selectedModel,
-                    collection: selectedProduct.collection,
-                    model_url: fixedUrl,
-                    scene: formattedScene,
-                    situation: formattedScene,
-                    model_prompt: modelPrompt,
-                    prompt: formattedScene,
-                    image_url: dispImageUrl,
-                    image_data: dispImageData,
-                    command: 'Generate Caption'
-                };
-
-                console.log('Caption request sent to', WEBHOOK_CAPTION, { product: selectedProduct.title, scene: formattedScene });
-                fetch(WEBHOOK_CAPTION, {
+                var captionPayload = { command: 'Generate Caption', product_id: selectedProduct.id };
+                console.log('Sending command:', captionPayload.command);
+                fetch(MAKE_WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(captionPayload)
                 }).then(function (res) { return res.text(); }).then(function (rawText) {
-                    console.log('RAW_TEXT_FROM_CAPTION_WEBHOOK:', rawText);
-                }).catch(function (e) { console.warn('Caption webhook send failed', e); });
+                    var data = null;
+                    try { data = JSON.parse(sanitizeJsonString(rawText || '{}')); } catch (e) {}
+                    console.log('Webhook response:', data !== null ? data : rawText);
+                }).catch(function (e) {
+                    console.warn('Caption webhook send failed', e);
+                    var wrap = document.getElementById('captionSpinnerWrap');
+                    if (wrap) wrap.style.display = 'none';
+                    if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                });
 
-                setButtonLocked(telegramBtn, false);
-                var ft = document.getElementById('finalTelegram');
-                if (ft) { ft.disabled = false; ft.classList.remove('btn-locked'); }
-                setNextStepGlow(telegramBtn);
+                updateTelegramButtonState();
+                setNextStepGlow(captionBtn);
             } catch (err) {
                 stopPersonaCycle();
                 showStatus(status, '✗ Network error: ' + err.message, 'error');
-            }
-            if (captionBtn) {
-                setButtonLocked(captionBtn, false);
-                captionBtn.textContent = '📝 Generate Marketing Post';
+                var wrap = document.getElementById('captionSpinnerWrap');
+                if (wrap) wrap.style.display = 'none';
+                if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
             }
         }
 
@@ -1653,60 +1710,31 @@
             if (!selectedProduct) return;
             const status = document.getElementById('step2Status');
             showStatus(status, '🚀 Sending to Telegram...');
-            console.log('SENDING REQUEST FOR MODEL (telegram):', selectedModel);
+            if (telegramBtn) { telegramBtn.disabled = true; telegramBtn.classList.add('btn-locked'); }
+            var finalT = document.getElementById('finalTelegram');
+            if (finalT) { finalT.disabled = true; finalT.classList.add('btn-locked'); }
+            var telegramSpinnerWrap = document.getElementById('telegramSpinnerWrap');
+            if (telegramSpinnerWrap) telegramSpinnerWrap.style.display = 'inline-flex';
 
-            // Format scene as 'Category - Scene Name' instead of comma-separated
-            const formattedScene = selectedScene.includes(',') 
-                ? selectedScene.replace(',', ' - ') 
-                : selectedScene;
-
-            // Ensure Alma's reference image URL is correct
-            let modelUrl = selectedProduct.modelUrl;
-            if (selectedModel === 'Alma') {
-                modelUrl = 'https://res.cloudinary.com/dtapjwtqw/image/upload/v1769810294/liranhe_Glamorous_portrait_of_a_captivating_woman_with_exotic_f_90e9b0f9-f99e-4553-9a00-cc7f73a3c494_f7ffkh.png';
-            }
-
-            const marketingEl = getMarketingTextEl();
-            var cardBodyEl = document.getElementById('instagramPostBody');
-            const captionValue = currentCaption || (marketingEl && (marketingEl.value !== undefined ? marketingEl.value : marketingEl.innerText)) || (cardBodyEl && cardBodyEl.innerText && String(cardBodyEl.innerText).trim()) || '';
-            var imgEl = getGeneratedImageEl();
-            var imageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
-            if (!imageUrl && imgEl && imgEl.getAttribute('src')) imageUrl = String(imgEl.getAttribute('src')).trim();
-            imageUrl = normalizeImageUrl(imageUrl);
-
-            var imageData = '';
-            if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) {
-                imageData = await getImageAsDataUrl(imgEl);
-            }
-
-            var payload = {
-                source: 'Web_App',
-                product_id: selectedProduct.id,
-                rowNumber: selectedProduct.rowNumber,
-                product: selectedProduct.title,
-                model: selectedModel,
-                collection: selectedProduct.collection,
-                model_url: modelUrl,
-                scene: formattedScene,
-                situation: formattedScene,
-                caption: captionValue,
-                image_url: imageUrl,
-                image_data: imageData,
-                command: 'Approve & Post'
-            };
+            var payload = { command: 'Generate Telegram', product_id: selectedProduct.id };
+            console.log('Sending command:', payload.command);
 
             try {
-                const res = await fetch(WEBHOOK_CAPTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const res = await fetch(MAKE_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                var rawText = await res.text();
+                var data = null;
+                try { data = JSON.parse(sanitizeJsonString(rawText)); } catch (e) {}
+                console.log('Webhook response:', data !== null ? data : rawText);
                 if (res.ok) {
                     showStatus(status, '✓ Sent to Telegram!', 'success');
-                    // Data cleanup: mark run as complete and ignore any stale statuses
                     lastSeenStatus = '';
                     generationPhase = 'idle';
                 } else {
                     showStatus(status, '✗ Error sending to Telegram', 'error');
                 }
             } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
-            telegramBtn.disabled = false;
+            if (telegramSpinnerWrap) telegramSpinnerWrap.style.display = 'none';
+            updateTelegramButtonState();
         }
 
         init();
