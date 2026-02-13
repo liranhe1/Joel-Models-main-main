@@ -284,7 +284,6 @@
 
     <script src="products_verified.js"></script>
     <script>
-        const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
         const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
         const WEBHOOK_CAPTION = 'https://hook.eu2.make.com/rseu4bjldsj15cm12wx0otg620ahrv67';
         const WEBHOOK_SCENARIOS = 'https://hook.eu2.make.com/sm6zjl2q1vjzsc4pu4xqd8wx318wpr73';
@@ -1449,7 +1448,7 @@
 
             try {
                 console.log('Sending command:', payload.command);
-                const res = await fetch(MAKE_WEBHOOK_URL, {
+                const res = await fetch(WEBHOOK_IMAGE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1672,7 +1671,7 @@
 
                 var captionPayload = { command: 'Generate Caption', product_id: selectedProduct.id };
                 console.log('Sending command:', captionPayload.command);
-                fetch(MAKE_WEBHOOK_URL, {
+                fetch(WEBHOOK_CAPTION, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(captionPayload)
@@ -1730,7 +1729,7 @@
             console.log('Sending command:', payload.command);
 
             try {
-                const res = await fetch(MAKE_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const res = await fetch(WEBHOOK_TELEGRAM, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 var rawText = await res.text();
                 var data = null;
                 try { data = JSON.parse(sanitizeJsonString(rawText)); } catch (e) {}
