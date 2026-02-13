@@ -1123,6 +1123,11 @@
                     document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
                     btn.classList.add('active');
                     document.getElementById('step' + btn.dataset.step).classList.add('active');
+                    // במסך קופירייטר (שלב 2) – כפתור יצירת פוסט תמיד גלוי
+                    if (btn.dataset.step === '2' && captionBtn) {
+                        captionBtn.style.display = '';
+                        captionBtn.style.visibility = 'visible';
+                    }
                 });
             });
 
@@ -1394,8 +1399,13 @@
             showStatus(statusBar, '⚙️ Generating image...');
             generateBtn.disabled = true;
 
-            // Immediate unlock: Liran can work without waiting for webhook
-            if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+            // כפתור יצירת פוסט תמיד גלוי במסך קופירייטר (לאחר יצירת תמונה)
+            if (captionBtn) {
+                captionBtn.style.display = '';
+                captionBtn.style.visibility = 'visible';
+                setButtonLocked(captionBtn, false);
+                captionBtn.textContent = '📝 Generate Marketing Post';
+            }
             updateTelegramButtonState();
 
             // Prepare live image placeholder + shimmer; show Dropbox link while loading
@@ -1469,7 +1479,7 @@
                         setLiranWebhookStatus('Received Image (Scenario B)');
                         stopPersonaCycle();
                         if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
-                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                        if (captionBtn) { captionBtn.style.display = ''; captionBtn.style.visibility = 'visible'; setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                         setNextStepGlow(captionBtn);
                         generationPhase = 'caption';
                     } else {
@@ -1485,7 +1495,7 @@
                         setLiranWebhookStatus('Received Image URL');
                         stopPersonaCycle();
                         if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
-                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                        if (captionBtn) { captionBtn.style.display = ''; captionBtn.style.visibility = 'visible'; setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                         setNextStepGlow(captionBtn);
                         generationPhase = 'caption';
                     }
