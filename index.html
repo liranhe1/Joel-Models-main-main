@@ -144,8 +144,7 @@
         ::-webkit-scrollbar-track { background:var(--black); }
         ::-webkit-scrollbar-thumb { background:var(--gold); border-radius:3px; }
 
-        .liran-control-panel { position:fixed; bottom:12px; right:12px; z-index:200; background:#0a0a0a; color:#22c55e; font-size:11px; font-family:monospace; padding:10px 12px; border-radius:6px; border:1px solid rgba(34,197,94,0.4); max-width:280px; line-height:1.5; }
-        .liran-control-panel div { margin:2px 0; word-break:break-all; }
+
     </style>
 </head>
 <body>
@@ -270,18 +269,6 @@
         </section>
     </main>
 
-    <div class="liran-control-panel" id="liranControlPanel">
-        <div><strong>Watching Row 5 - Victoria_Dashboard</strong></div>
-        <div>Webhook URL: <span id="liranWebhook">—</span></div>
-        <div>Webhook Status: <span id="liranWebhookStatus">—</span></div>
-        <div>B5 Content Detected: <span id="liranB5Detected">—</span></div>
-        <div>Final URL: <span id="liranFinalUrl">—</span></div>
-        <div>Regex Image: <span id="liranRegexImage">—</span></div>
-        <div>Regex Caption: <span id="liranRegexCaption">—</span></div>
-        <div>B5 Link: <span id="liranB5">—</span></div>
-        <div>D5 Text: <span id="liranD5">—</span></div>
-    </div>
-
     <script src="products_verified.js"></script>
     <script>
         const WEBHOOK_IMAGE = 'https://hook.eu2.make.com/y3ckr5lpv25147c4l5zi5r9wfyd6kmvl';
@@ -292,6 +279,10 @@
 
         var appState = 'studio';
 
+        let imageReady = false;
+        let captionReady = false;
+        let telegramReady = false;
+        
         function sanitizeJsonString(str) {
             if (typeof str !== 'string') return str;
             var s = str.replace(/[\x00-\x1f\x7f]/g, ' ');
@@ -1459,6 +1450,11 @@
                 try { data = JSON.parse(sanitizeJsonString(rawText)); } catch (e) { data = null; }
                 console.log('Webhook response:', data !== null ? data : rawText);
 
+                if (data && data.image) {
+                    imageReady = true;
+                    updateUIState();
+                }
+
                 if (!res.ok) {
                     showStatus(statusBar, '✗ Error sending image request', 'error');
                 } else {
@@ -1498,53 +1494,7 @@
                         setNextStepGlow(captionBtn);
                         generationPhase = 'caption';
                     }
-                    var shouldPollRow5 = (rawTrimmed === 'Accepted') || (rawTrimmed.startsWith('{') && !(data && (typeof data.url === 'string' && data.url.trim() ? data.url.trim() : getImageUrl(data) || (data.output && getImageUrl(data.output)) || (data.data && getImageUrl(data.data)) || (data.result && getImageUrl(data.result)) || (Array.isArray(data) && data.length && getImageUrl(data[0])))));
-                    if (!shouldPollRow5 && !rawTrimmed.startsWith('{')) shouldPollRow5 = true;
-                    if (shouldPollRow5) {
-                        showStatus(statusBar, rawTrimmed === 'Accepted' ? 'Request accepted, polling Row 5 every 2s...' : 'Polling Row 5 for result...', 'success');
-                        var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
-                        if (statusUrl) {
-                            var emergencyPollMs = 2000;
-                            var emergencyIntervalId = null;
-                            var pollRow5Raw = async function () {
-                                try {
-                                    var statusRes = await fetch(statusUrl);
-                                    if (!statusRes.ok) return;
-                                    var rawText = await statusRes.text();
-                                    var row5 = parseRow5Simple(rawText);
-                                    var j5Text = (row5.status || '').trim();
-                                    var b5Val = (row5.image || '').trim();
-                                    var isImageUrl = b5Val && b5Val.toLowerCase().startsWith('http');
-                                    var linkEl = document.getElementById('imgDropboxLink');
-                                    if (linkEl && b5Val && b5Val.toLowerCase().startsWith('http')) linkEl.href = normalizeImageUrl(b5Val);
-                                    if (isImageUrl) {
-                                        if (emergencyIntervalId) { clearInterval(emergencyIntervalId); emergencyIntervalId = null; }
-                                        var urlFixed = normalizeImageUrl(b5Val);
-                                        if (imageSpinner) imageSpinner.style.display = 'none';
-                                        if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
-                                        setGeneratedImageUrl(urlFixed);
-                                        injectImageByPosition(urlFixed);
-                                        setLiranB5Detected(b5Val);
-                                        setLiranFinalUrl(urlFixed);
-                                        setLiranWebhookStatus('B5 Content Detected (Row 5)');
-                                        stopPersonaCycle();
-                                        if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
-                                        if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
-                                        setNextStepGlow(captionBtn);
-                                        generationPhase = 'caption';
-                                        return;
-                                    }
-                                    if (j5Text) {
-                                        if (imageSpinner) imageSpinner.style.display = 'none';
-                                        stopPersonaCycle();
-                                    }
-                                } catch (err) { console.warn('Emergency poll fetch failed', err); }
-                            };
-                            pollRow5Raw();
-                            emergencyIntervalId = setInterval(pollRow5Raw, emergencyPollMs);
-                            setTimeout(function () {
-                                if (emergencyIntervalId) { clearInterval(emergencyIntervalId); emergencyIntervalId = null; }
-                            }, 10 * 60 * 1000);
+                    
                         }
                     } else if (rawTrimmed.startsWith('{')) {
                         try {
@@ -1677,6 +1627,12 @@
                     var data = null;
                     try { data = JSON.parse(sanitizeJsonString(rawText || '{}')); } catch (e) {}
                     console.log('Webhook response:', data !== null ? data : rawText);
+
+                    if (data && (data.status === 'caption_ready' || data.status === 'CAPTION_READY')) {
+                        captionReady = true;
+                        updateUIState();
+                    }
+
                 }).catch(function (e) {
                     console.warn('Caption webhook send failed', e);
                     var wrap = document.getElementById('captionSpinnerWrap');
@@ -1742,6 +1698,23 @@
             } catch (err) { showStatus(status, '✗ Network error: ' + err.message, 'error'); }
             if (telegramSpinnerWrap) telegramSpinnerWrap.style.display = 'none';
             updateTelegramButtonState();
+        }
+
+        function updateUIState() {
+
+            const captionBtn = document.getElementById('captionBtn');
+            const telegramBtn = document.getElementById('telegramBtn');
+
+            // כפתור יצירת פוסט
+            if (captionBtn) {
+                captionBtn.style.display = imageReady ? 'inline-block' : 'none';
+            }
+
+            // כפתור טלגרם
+            if (telegramBtn) {
+                telegramBtn.disabled = !captionReady;
+                telegramBtn.classList.toggle('btn-locked', !captionReady);
+            }
         }
 
         init();
