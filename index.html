@@ -1460,11 +1460,11 @@
                 } else {
                     appState = 'copywriter';
                     var rawTrimmed = (rawText || '').trim();
-
                     try {
                         data = JSON.parse(sanitizeJsonString(rawText));
                     } catch (e) { data = null; }
                     var webhookImageField = data && (typeof data.image === 'string' && data.image.trim() ? data.image.trim() : (data.output && typeof data.output.image === 'string' && data.output.image.trim() ? data.output.image.trim() : null));
+                    var imageHandled = false;
                     if (webhookImageField && webhookImageField.toLowerCase().startsWith('http')) {
                         var urlFixed = normalizeImageUrl(webhookImageField);
                         if (imageSpinner) imageSpinner.style.display = 'none';
@@ -1477,38 +1477,40 @@
                         if (captionBtn) { captionBtn.style.display = ''; captionBtn.style.visibility = 'visible'; setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
                         setNextStepGlow(captionBtn);
                         generationPhase = 'caption';
-                    } else {
-                    var webhookImageUrl = data && (data.image_url || data.imageUrl || (data.output && (data.output.image_url || data.output.imageUrl)));
-                    var webhookStatus = data && (data.status || (data.output && data.output.status));
-                    var isImageReady = webhookStatus && String(webhookStatus).toUpperCase() === 'IMAGE_READY';
-                    if (webhookImageUrl && isImageReady) {
-                        var urlFixed = normalizeImageUrl(String(webhookImageUrl).trim());
-                        if (imageSpinner) imageSpinner.style.display = 'none';
-                        if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
-                        setGeneratedImageUrl(urlFixed);
-                        injectImageByPosition(urlFixed);
-                        setLiranWebhookStatus('Received Image URL');
-                        stopPersonaCycle();
-                        if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
-                        if (captionBtn) { captionBtn.style.display = ''; captionBtn.style.visibility = 'visible'; setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
-                        setNextStepGlow(captionBtn);
-                        generationPhase = 'caption';
+                        imageHandled = true;
                     }
-                    
+                    if (!imageHandled) {
+                        var webhookImageUrl = data && (data.image_url || data.imageUrl || (data.output && (data.output.image_url || data.output.imageUrl)));
+                        var webhookStatus = data && (data.status || (data.output && data.output.status));
+                        var isImageReady = webhookStatus && String(webhookStatus).toUpperCase() === 'IMAGE_READY';
+                        if (webhookImageUrl && isImageReady) {
+                            var urlFixed2 = normalizeImageUrl(String(webhookImageUrl).trim());
+                            if (imageSpinner) imageSpinner.style.display = 'none';
+                            if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
+                            setGeneratedImageUrl(urlFixed2);
+                            injectImageByPosition(urlFixed2);
+                            setLiranWebhookStatus('Received Image URL');
+                            stopPersonaCycle();
+                            if (globalStatusBar) { globalStatusBar.textContent = '✓ Image Ready'; globalStatusBar.classList.add('visible'); }
+                            if (captionBtn) { captionBtn.style.display = ''; captionBtn.style.visibility = 'visible'; setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
+                            setNextStepGlow(captionBtn);
+                            generationPhase = 'caption';
+                            imageHandled = true;
                         }
-                    } else if (rawTrimmed.startsWith('{')) {
+                    }
+                    if (!imageHandled && rawTrimmed.startsWith('{')) {
                         try {
                             data = JSON.parse(sanitizeJsonString(rawText));
                         } catch (e) {
                             console.warn('Image webhook JSON parse failed.', e);
                         }
-                        const directUrl = data && (typeof data.url === 'string' && data.url.trim() ? data.url.trim() : getImageUrl(data) || (data.output && getImageUrl(data.output)) || (data.data && getImageUrl(data.data)) || (data.result && getImageUrl(data.result)) || (Array.isArray(data) && data.length && getImageUrl(data[0])));
+                        var directUrl = data && (typeof data.url === 'string' && data.url.trim() ? data.url.trim() : getImageUrl(data) || (data.output && getImageUrl(data.output)) || (data.data && getImageUrl(data.data)) || (data.result && getImageUrl(data.result)) || (Array.isArray(data) && data.length && getImageUrl(data[0])));
                         if (directUrl) {
-                            var urlFixed = normalizeImageUrl(String(directUrl).trim());
+                            var urlFixed3 = normalizeImageUrl(String(directUrl).trim());
                             if (imageSpinner) imageSpinner.style.display = 'none';
                             if (imagePlaceholder) { imagePlaceholder.style.display = 'none'; imagePlaceholder.textContent = ''; }
-                            setGeneratedImageUrl(urlFixed);
-                            injectImageByPosition(urlFixed);
+                            setGeneratedImageUrl(urlFixed3);
+                            injectImageByPosition(urlFixed3);
                             showStatus(statusBar, '✓ Image generated successfully', 'success');
                             setButtonLocked(captionBtn, false);
                             generationPhase = 'caption';
@@ -1516,9 +1518,8 @@
                         } else {
                             showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
                         }
-                    } else {
+                    } else if (!imageHandled) {
                         showStatus(statusBar, '✓ Request sent! Waiting for image...', 'success');
-                    }
                     }
                 }
             } catch (err) {
@@ -1683,7 +1684,14 @@
             console.log('Sending command:', payload.command);
 
             try {
-                const res = await fetch(WEBHOOK_TELEGRAM, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const res = await fetch(WEBHOOK_CAPTION, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        command: 'Generate Telegram',
+                        product_id: selectedProduct.id
+                    })
+                });
                 var rawText = await res.text();
                 var data = null;
                 try { data = JSON.parse(sanitizeJsonString(rawText)); } catch (e) {}
