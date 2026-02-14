@@ -1666,8 +1666,6 @@
                 var dispImageUrl = (imgEl && imgEl.src && String(imgEl.src).trim()) ? String(imgEl.src).trim() : '';
                 if (!dispImageUrl && imgEl && imgEl.getAttribute('src')) dispImageUrl = String(imgEl.getAttribute('src')).trim();
                 dispImageUrl = normalizeImageUrl(dispImageUrl);
-                var dispImageData = '';
-                if (imgEl && (imgEl.src || imgEl.getAttribute('src'))) dispImageData = await getImageAsDataUrl(imgEl);
 
                 var captionPayload = { command: 'Generate Caption', product_id: selectedProduct.id };
                 console.log('Sending command:', captionPayload.command);
