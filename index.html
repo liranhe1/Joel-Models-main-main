@@ -1216,9 +1216,27 @@
                     if (dropboxLink) dropboxLink.href = imageUrl;
                 }
                 if (captionRaw && captionRaw.trim()) {
-                    var cleanCaption = captionRaw.replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
-                    injectMarketingTextByPosition(cleanCaption);
+
+                    // אם כבר הוזרק אותו טקסט — אל תעשה שוב
+                    if (captionRaw.trim() !== currentCaption) {
+
+                        var cleanCaption = captionRaw
+                            .replace(/\\"/g, '"')
+                            .replace(/\\\\/g, '\\')
+                            .trim();
+
+                        console.log("D5 detected – injecting caption:", cleanCaption);
+
+                        injectMarketingTextByPosition(cleanCaption);
+
+                        // משחרר כפתור טלגרם
+                        setButtonLocked(telegramBtn, false);
+
+                        // מסמן שהגענו לשלב מוכן
+                        generationPhase = 'idle';
+                    }
                 }
+
 
                 if (text !== lastJ5Content) {
                     lastJ5Content = text;
