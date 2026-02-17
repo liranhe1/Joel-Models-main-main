@@ -1691,7 +1691,8 @@
         }
 
         function selectProduct(productId) {
-            selectedProduct = PRODUCTS_DATA.find(p => p.id === productId);
+            selectedProduct = PRODUCTS_DATA.find(p => String(p.id) === String(productId));
+            console.log('Selected product:', selectedProduct);
             document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
             document.querySelector(`[data-id="${productId}"]`)?.classList.add('selected');
             selectedProductEl.textContent = selectedProduct ? selectedProduct.title : 'Select a product...';
