@@ -2188,7 +2188,7 @@
 
             try {
 
-                const response = await fetch(CAPTION_WEBHOOK_URL, {
+                const response = await fetch(WEBHOOK_CAPTION, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
