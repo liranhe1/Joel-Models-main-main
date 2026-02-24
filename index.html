@@ -2200,14 +2200,33 @@
                     })
                 });
 
-                const data = await response.json();
-                console.log("Caption webhook response:", data);
+                const rawCaptionText = await response.text();
+                console.log("Caption webhook raw response:", rawCaptionText);
 
-                if (data && data.caption) {
+                let data = null;
+                try {
+                    data = JSON.parse(sanitizeJsonString(rawCaptionText));
+                } catch (e) {
+                    console.error("Caption webhook JSON parse failed:", e);
+                    console.error("Raw caption response text that failed to parse:", rawCaptionText);
+                    data = null;
+                }
 
+                console.log("Caption webhook parsed data:", data !== null ? data : rawCaptionText);
+
+                let captionText = "";
+                if (data && typeof data === "object" && !Array.isArray(data) && data.caption) {
+                    captionText = String(data.caption);
+                } else if (data && typeof data === "object" && data.output && data.output.caption) {
+                    captionText = String(data.output.caption);
+                } else if (typeof data === "string" && data.trim()) {
+                    captionText = data.trim();
+                }
+
+                if (captionText) {
                     const captionElement = document.getElementById("instagramPostBody");
                     if (captionElement) {
-                        captionElement.textContent = data.caption;
+                        captionElement.textContent = captionText;
                     }
 
                     if (captionBtn) {
@@ -2218,7 +2237,6 @@
                     if (captionSpinnerWrap) {
                         captionSpinnerWrap.style.display = "none";
                     }
-
                 }
 
 
@@ -2281,8 +2299,14 @@
                     body: JSON.stringify(captionPayload)
                 }).then(function (res) { return res.text(); }).then(function (rawText) {
                     var data = null;
-                    try { data = JSON.parse(sanitizeJsonString(rawText || '{}')); } catch (e) { }
-                    console.log('Webhook response:', data !== null ? data : rawText);
+                    try {
+                        data = JSON.parse(sanitizeJsonString(rawText || '{}'));
+                    } catch (e) {
+                        console.error('Caption status webhook JSON parse failed:', e);
+                        console.error('Raw caption status response text that failed to parse:', rawText);
+                        data = null;
+                    }
+                    console.log('Caption status webhook response:', data !== null ? data : rawText);
 
                     if (data && (data.status === 'caption_ready' || data.status === 'CAPTION_READY')) {
 
@@ -2295,6 +2319,17 @@
 
                         captionReady = true;
                         updateUIState();
+                    } else if (!data) {
+                        // Fallback: Make.com returned a raw string (e.g., just the caption in Hebrew)
+                        var rawCaption = (rawText || '').trim();
+                        if (rawCaption) {
+                            const captionElement = document.getElementById("instagramPostBody");
+                            if (captionElement) {
+                                captionElement.textContent = rawCaption;
+                            }
+                            captionReady = true;
+                            updateUIState();
+                        }
                     }
 
                 }).catch(function (e) {
