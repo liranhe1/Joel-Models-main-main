@@ -1350,8 +1350,7 @@
         function updateTelegramButtonState() {
             var imgEl = getGeneratedImageEl();
             var hasImage = !!(currentImageUrl || (imgEl && (imgEl.src || imgEl.getAttribute('src'))));
-            var hasCaption = !!(currentCaption && String(currentCaption).trim());
-            var enable = hasImage && hasCaption;
+            var enable = hasImage;
             if (telegramBtn) setButtonLocked(telegramBtn, !enable);
             var ft = document.getElementById('finalTelegram');
             if (ft) { ft.disabled = !enable; if (enable) ft.classList.remove('btn-locked'); else ft.classList.add('btn-locked'); }
@@ -2370,6 +2369,12 @@
 
         async function sendToTelegram() {
             if (!selectedProduct) return;
+            var imgEl = getGeneratedImageEl();
+            var imageUrl = currentImageUrl || (imgEl && (imgEl.src || imgEl.getAttribute('src')));
+            if (!imageUrl || !String(imageUrl).trim()) {
+                showStatus(document.getElementById('step2Status'), '✗ No image to send', 'error');
+                return;
+            }
             const status = document.getElementById('step2Status');
             showStatus(status, '🚀 Sending to Telegram...');
             if (telegramBtn) { telegramBtn.disabled = true; telegramBtn.classList.add('btn-locked'); }
@@ -2378,17 +2383,21 @@
             var telegramSpinnerWrap = document.getElementById('telegramSpinnerWrap');
             if (telegramSpinnerWrap) telegramSpinnerWrap.style.display = 'inline-flex';
 
-            var payload = { command: 'Generate Telegram', product_id: selectedProduct.id };
-            console.log('Sending command:', payload.command);
+            var payload = {
+                command: 'send_only_photo',
+                product_id: selectedProduct.id,
+                image: String(imageUrl).trim()
+            };
+            if (currentCaption && String(currentCaption).trim()) {
+                payload.caption = String(currentCaption).trim();
+            }
+            console.log('Sending command:', payload.command, payload);
 
             try {
                 const res = await fetch(WEBHOOK_CAPTION, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        command: 'Generate Telegram',
-                        product_id: selectedProduct.id
-                    })
+                    body: JSON.stringify(payload)
                 });
                 var rawText = await res.text();
                 var data = null;
@@ -2416,10 +2425,10 @@
                 captionBtn.style.display = imageReady ? 'inline-block' : 'none';
             }
 
-            // כפתור טלגרם
+            // כפתור טלגרם – enabled as soon as image is present (independent of caption/post)
             if (telegramBtn) {
-                telegramBtn.disabled = !captionReady;
-                telegramBtn.classList.toggle('btn-locked', !captionReady);
+                telegramBtn.disabled = !imageReady;
+                telegramBtn.classList.toggle('btn-locked', !imageReady);
             }
         }
 
