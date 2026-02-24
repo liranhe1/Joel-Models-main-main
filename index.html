@@ -469,41 +469,131 @@
 
         .instagram-post-card {
             background: #fff;
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 2px 12px rgba(0, 0, 0, 0.04);
-            padding: 30px;
-            max-height: 360px;
-            overflow-y: auto;
-            direction: rtl;
-            text-align: right;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            font-size: 1.02rem;
-            line-height: 1.75;
-            color: #1a1a1a;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            max-width: 470px;
+            margin: 0 auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', Helvetica, Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #262626;
+        }
+
+        .ig-post-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-bottom: 1px solid #efefef;
+        }
+
+        .ig-post-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+            flex-shrink: 0;
+        }
+
+        .ig-post-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .ig-post-username {
+            font-weight: 600;
+            font-size: 14px;
+            color: #262626;
+        }
+
+        .ig-post-location {
+            font-size: 12px;
+            color: #8e8e8e;
+            font-weight: 400;
+        }
+
+        .ig-post-media {
+            width: 100%;
+            aspect-ratio: 1;
+            background: #fafafa;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ig-post-media img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .ig-post-media-placeholder {
+            position: absolute;
+            color: #8e8e8e;
+            font-size: 14px;
+        }
+
+        .ig-post-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px 8px 12px;
+            border-bottom: 1px solid #efefef;
+        }
+
+        .ig-post-actions .ig-save {
+            margin-left: auto;
+        }
+
+        .ig-action {
+            padding: 8px;
+            font-size: 22px;
+            cursor: default;
+            user-select: none;
+        }
+
+        .ig-action.ig-like { font-size: 24px; }
+        .ig-action.ig-comment { font-size: 22px; }
+        .ig-action.ig-share { font-size: 20px; transform: rotate(-15deg); }
+        .ig-action.ig-save { font-size: 22px; }
+
+        .ig-post-caption-wrap {
+            padding: 12px 16px 16px;
+            text-align: left;
+            direction: ltr;
+        }
+
+        .instagram-post-card .post-body.ig-post-caption {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #262626;
             white-space: pre-wrap;
             word-wrap: break-word;
-            unicode-bidi: plaintext;
         }
 
-        .instagram-post-card .post-body {
-            margin: 0;
-            font-size: 1.06rem;
+        .instagram-post-card .ig-post-caption .ig-caption-username {
+            font-weight: 600;
+            color: #262626;
         }
 
-        .instagram-post-card .post-body .post-hook {
-            font-weight: 700;
-            display: block;
-            margin-bottom: 0.35em;
+        .instagram-post-card .ig-post-caption .ig-caption-text {
+            color: #262626;
         }
 
-        .instagram-post-card .post-body .post-rest {
-            font-weight: 500;
+        .instagram-post-card .ig-post-caption .ig-caption-hashtags {
+            color: #00376b;
+            font-weight: 400;
+            margin-top: 4px;
         }
 
-        .instagram-post-card.post-loading .post-body {
-            color: #666;
+        .instagram-post-card.post-loading .ig-post-caption {
+            color: #8e8e8e;
             font-style: normal;
-            font-weight: 500;
         }
 
         .caption-text {
@@ -848,7 +938,26 @@
                 </div>
                 <div class="caption-box" id="captionBox" style="display:none">
                     <div class="instagram-post-card" id="instagramPostCard">
-                        <div class="post-body" id="instagramPostBody"></div>
+                        <div class="ig-post-header">
+                            <div class="ig-post-avatar" id="igPostAvatar"></div>
+                            <div class="ig-post-meta">
+                                <span class="ig-post-username" id="igPostUsername">Victoria</span>
+                                <span class="ig-post-location" id="igPostLocation">Tel Aviv, Israel</span>
+                            </div>
+                        </div>
+                        <div class="ig-post-media" id="igPostMedia">
+                            <img id="igPostMediaImg" alt="" style="display:none;">
+                            <div class="ig-post-media-placeholder" id="igPostMediaPlaceholder">Generating...</div>
+                        </div>
+                        <div class="ig-post-actions">
+                            <span class="ig-action ig-like" title="Like">♡</span>
+                            <span class="ig-action ig-comment" title="Comment">💬</span>
+                            <span class="ig-action ig-share" title="Share">✈</span>
+                            <span class="ig-action ig-save" title="Save">🔖</span>
+                        </div>
+                        <div class="ig-post-caption-wrap">
+                            <div class="post-body ig-post-caption" id="instagramPostBody"></div>
+                        </div>
                     </div>
                     <textarea class="caption-text" id="captionText" placeholder="Marketing text will appear here..."
                         aria-hidden="true"></textarea>
@@ -1099,6 +1208,10 @@
                 img.style.display = 'block';
                 currentImageUrl = u;
             }
+            var igImg = document.getElementById('igPostMediaImg');
+            var igPlaceholder = document.getElementById('igPostMediaPlaceholder');
+            if (igImg) { igImg.src = u; igImg.alt = 'Post'; igImg.style.display = 'block'; }
+            if (igPlaceholder) igPlaceholder.style.display = 'none';
             if (container) container.classList.remove('shimmer');
             updatePostPreview();
         }
@@ -1109,9 +1222,80 @@
             return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
+        function getPostUsername() {
+            return (typeof selectedModel === 'string' && selectedModel) ? selectedModel : 'Victoria';
+        }
+
+        function cleanCaptionText(raw) {
+            if (raw == null) return '';
+            var s = String(raw).trim();
+            if (!s) return '';
+            if (/^\s*[\{\[]/.test(s) && (s.indexOf('"status"') !== -1 || s.indexOf('"caption_ready"') !== -1 || s.indexOf('caption_ready') !== -1)) {
+                try {
+                    var parsed = typeof JSON.parse === 'function' ? JSON.parse(sanitizeJsonString(s)) : null;
+                    if (parsed && typeof parsed === 'object') {
+                        var cap = parsed.caption || (parsed.output && parsed.output.caption) || parsed.post || parsed.text || '';
+                        return String(cap).trim();
+                    }
+                } catch (e) { return ''; }
+                return '';
+            }
+            if (/^(status|caption_ready|error|undefined|null)$/i.test(s)) return '';
+            s = s.replace(/\b(status|caption_ready)\s*[:=]\s*["']?[^"'\s]*["']?/gi, '').trim();
+            if (!s) return '';
+            return s;
+        }
+
+        function renderCaptionInPost(cleanCaption) {
+            var username = getPostUsername();
+            var body = document.getElementById('instagramPostBody');
+            var card = document.getElementById('instagramPostCard');
+            if (!body) return;
+            if (!cleanCaption || !String(cleanCaption).trim()) {
+                body.innerHTML = '';
+                if (card) card.classList.add('post-loading');
+                return;
+            }
+            var text = String(cleanCaption).trim();
+            var hashtagMatch = text.match(/(\s+#[\w\u0590-\u05FF]+(?:\s+#[\w\u0590-\u05FF]+)*)\s*$/);
+            var hashtags = hashtagMatch ? hashtagMatch[1].trim() : '';
+            var mainText = hashtags ? text.slice(0, text.length - hashtags.length).trim() : text;
+            var usernameHtml = '<span class="ig-caption-username">' + escapeHtmlForPost(username) + '</span> ';
+            var mainHtml = '<span class="ig-caption-text">' + escapeHtmlForPost(mainText) + '</span>';
+            var hashtagHtml = hashtags ? '<span class="ig-caption-hashtags">' + escapeHtmlForPost(hashtags) + '</span>' : '';
+            body.innerHTML = usernameHtml + mainHtml + (hashtagHtml ? ' ' + hashtagHtml : '');
+            if (card) card.classList.remove('post-loading');
+        }
+
+        function setInstagramPostLoading(loading) {
+            var body = document.getElementById('instagramPostBody');
+            var card = document.getElementById('instagramPostCard');
+            if (card) card.classList.toggle('post-loading', !!loading);
+            if (body) { body.innerHTML = ''; body.textContent = loading ? 'Generating...' : ''; }
+        }
+
+        function updateInstagramPostHeader() {
+            var usernameEl = document.getElementById('igPostUsername');
+            if (usernameEl) usernameEl.textContent = getPostUsername();
+        }
+
+        function clearInstagramPostMedia() {
+            var igImg = document.getElementById('igPostMediaImg');
+            var igPlaceholder = document.getElementById('igPostMediaPlaceholder');
+            if (igImg) { igImg.src = ''; igImg.style.display = 'none'; }
+            if (igPlaceholder) { igPlaceholder.textContent = 'Generating...'; igPlaceholder.style.display = ''; }
+        }
+
         function injectMarketingTextByPosition(text) {
             if (text == null || String(text).trim() === '') return;
-            const clean = String(text).trim();
+            var raw = String(text).trim();
+            var clean = cleanCaptionText(raw);
+            if (!clean) {
+                setInstagramPostLoading(true);
+                const captionBox = document.querySelector('.caption-box');
+                if (captionBox) captionBox.style.display = 'block';
+                return;
+            }
             const el = getMarketingArea();
             if (el) {
                 if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') el.value = clean;
@@ -1121,16 +1305,7 @@
             var captionSpinnerWrap = document.getElementById('captionSpinnerWrap');
             if (captionSpinnerWrap) captionSpinnerWrap.style.display = 'none';
             if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
-            var cardBody = document.getElementById('instagramPostBody');
-            if (cardBody) {
-                var lines = clean.split('\n');
-                var first = lines[0] || '';
-                var rest = lines.slice(1).join('\n');
-                cardBody.innerHTML = '<span class="post-hook">' + escapeHtmlForPost(first) + '</span>' + (rest ? '\n<span class="post-rest">' + escapeHtmlForPost(rest) + '</span>' : '');
-                cardBody.classList.remove('post-loading');
-            }
-            var cardEl = document.getElementById('instagramPostCard');
-            if (cardEl) cardEl.classList.remove('post-loading');
+            renderCaptionInPost(clean);
             const captionBox = document.querySelector('.caption-box');
             if (captionBox) captionBox.style.display = 'block';
             appState = 'ready';
@@ -1304,6 +1479,10 @@
                 img.src = normalizedUrl;
                 img.style.display = 'block';
             }
+            var igImg = document.getElementById('igPostMediaImg');
+            var igPlaceholder = document.getElementById('igPostMediaPlaceholder');
+            if (igImg) { igImg.src = normalizedUrl; igImg.alt = 'Post'; igImg.style.display = 'block'; }
+            if (igPlaceholder) igPlaceholder.style.display = 'none';
         }
 
         function wrapLiranWithShimmer(str) {
@@ -1424,6 +1603,7 @@
             currentCaption = null;
             currentImageUrl = null;
             if (captionText) captionText.value = '';
+            clearInstagramPostMedia();
             if (captionBox) captionBox.style.display = 'none';
             updatePostPreview();
             updateTelegramButtonState();
@@ -1706,6 +1886,7 @@
                     selectedModel = btn.dataset.model;
                     collectionBadge.textContent = selectedModel === 'Victoria' ? 'MOISSANITE' : 'EMERALD';
                     collectionBadge.className = 'collection-badge ' + (selectedModel === 'Victoria' ? 'badge-moissanite' : 'badge-emerald');
+                    updateInstagramPostHeader();
                     selectedProduct = null;
                     selectedProductEl.textContent = 'Select a product...';
                     renderProducts();
@@ -1967,6 +2148,7 @@
         async function generateImage() {
             // ABSOLUTE STATE PURGE (must be first line)
             currentCaption = null; currentImageUrl = null; if (captionText) captionText.value = '';
+            clearInstagramPostMedia();
             if (!selectedProduct) return;
             // During action: disable button immediately, 10s ignore DONE, status = Processing...
             generateBtn.disabled = true;
@@ -2222,29 +2404,23 @@
                 } else if (typeof data === "string" && data.trim()) {
                     captionText = data.trim();
                 }
+                var cleanCaption = cleanCaptionText(captionText || rawCaptionText);
 
-                if (captionText) {
-                    const captionElement = document.getElementById("instagramPostBody");
-                    if (captionElement) {
-                        captionElement.textContent = captionText;
-                    }
-
+                if (cleanCaption) {
+                    currentCaption = cleanCaption;
+                    renderCaptionInPost(cleanCaption);
                     if (captionBtn) {
                         captionBtn.textContent = "Caption Ready";
                         setButtonLocked(captionBtn, false);
                     }
-
-                    if (captionSpinnerWrap) {
-                        captionSpinnerWrap.style.display = "none";
-                    }
+                    if (captionSpinnerWrap) captionSpinnerWrap.style.display = "none";
+                } else {
+                    setInstagramPostLoading(true);
                 }
 
-
                 if (captionBox) captionBox.style.display = 'block';
-                var cardBody = document.getElementById('instagramPostBody');
-                var cardEl = document.getElementById('instagramPostCard');
-                if (cardBody) { cardBody.textContent = 'Victoria is crafting your story...'; cardBody.classList.add('post-loading'); }
-                if (cardEl) cardEl.classList.add('post-loading');
+                updateInstagramPostHeader();
+                if (!cleanCaption) setInstagramPostLoading(true);
 
                 var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
                 if (statusUrl) {
@@ -2252,10 +2428,7 @@
                     var d5IntervalId = null;
                     var d5TimeoutId = setTimeout(function () {
                         if (d5IntervalId) { clearInterval(d5IntervalId); d5IntervalId = null; }
-                        if (cardBody && cardBody.textContent === 'Victoria is crafting your story...') {
-                            cardBody.textContent = '';
-                            if (cardEl) cardEl.classList.remove('post-loading');
-                        }
+                        setInstagramPostLoading(false);
                         var wrap = document.getElementById('captionSpinnerWrap');
                         if (wrap) wrap.style.display = 'none';
                         if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
@@ -2279,8 +2452,7 @@
                     pollD5();
                     d5IntervalId = setInterval(pollD5, d5PollMs);
                 } else {
-                    if (cardBody) cardBody.textContent = '';
-                    if (cardEl) cardEl.classList.remove('post-loading');
+                    setInstagramPostLoading(false);
                     var wrap = document.getElementById('captionSpinnerWrap');
                     if (wrap) wrap.style.display = 'none';
                     if (captionBtn) { setButtonLocked(captionBtn, false); captionBtn.textContent = '📝 Generate Marketing Post'; }
@@ -2309,24 +2481,23 @@
                     console.log('Caption status webhook response:', data !== null ? data : rawText);
 
                     if (data && (data.status === 'caption_ready' || data.status === 'CAPTION_READY')) {
-
-                        if (data.caption) {
-                            const captionElement = document.getElementById("instagramPostBody");
-                            if (captionElement) {
-                                captionElement.textContent = data.caption;
-                            }
+                        var cap = data.caption ? String(data.caption).trim() : '';
+                        var clean = cleanCaptionText(cap || rawText);
+                        if (clean) {
+                            currentCaption = clean;
+                            renderCaptionInPost(clean);
+                        } else if (cap) {
+                            currentCaption = cap;
+                            renderCaptionInPost(cap);
                         }
-
                         captionReady = true;
                         updateUIState();
                     } else if (!data) {
-                        // Fallback: Make.com returned a raw string (e.g., just the caption in Hebrew)
                         var rawCaption = (rawText || '').trim();
-                        if (rawCaption) {
-                            const captionElement = document.getElementById("instagramPostBody");
-                            if (captionElement) {
-                                captionElement.textContent = rawCaption;
-                            }
+                        var clean = cleanCaptionText(rawCaption);
+                        if (clean) {
+                            currentCaption = clean;
+                            renderCaptionInPost(clean);
                             captionReady = true;
                             updateUIState();
                         }
