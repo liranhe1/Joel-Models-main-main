@@ -2193,6 +2193,7 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         command: "Generate Caption",
+                        product_id: selectedProduct.id,
                         model: selectedModel,
                         scene: formattedScene,
                         image: fixedUrl
