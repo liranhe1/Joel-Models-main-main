@@ -2041,6 +2041,21 @@
             });
             const hardResetBtn = document.getElementById('hardResetBtn');
             if (hardResetBtn) hardResetBtn.addEventListener('click', hardReset);
+
+            // כל טקסט קיים / נערך יוצג גם בתוך כרטיס האינסטגרם מתחת לתמונה
+            if (captionText) {
+                captionText.addEventListener('input', function () {
+                    const raw = String(captionText.value || '').trim();
+                    if (!raw) {
+                        setInstagramPostLoading(false);
+                        return;
+                    }
+                    const clean = cleanCaptionText(raw) || raw;
+                    currentCaption = clean;
+                    renderCaptionInPost(clean);
+                    if (captionBox) captionBox.style.display = 'block';
+                });
+            }
         }
 
         // Unlock: Generate Image enabled when a product is selected (no mandatory scene dependency)
