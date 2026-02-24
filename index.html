@@ -1347,6 +1347,20 @@
             if (igPlaceholder) { igPlaceholder.textContent = 'Generating...'; igPlaceholder.style.display = ''; }
         }
 
+        // מסנכרן את כרטיס האינסטגרם עם התמונה הראשית שכבר נטענה (currentImageUrl)
+        function syncInstagramPostMediaFromCurrent() {
+            if (!currentImageUrl) return;
+            var igImg = document.getElementById('igPostMediaImg');
+            var igPlaceholder = document.getElementById('igPostMediaPlaceholder');
+            var url = normalizeImageUrl(currentImageUrl);
+            if (igImg) {
+                igImg.src = url;
+                igImg.alt = 'Post';
+                igImg.style.display = 'block';
+            }
+            if (igPlaceholder) igPlaceholder.style.display = 'none';
+        }
+
         function injectMarketingTextByPosition(text) {
             if (text == null || String(text).trim() === '') return;
             var raw = String(text).trim();
@@ -2551,6 +2565,8 @@
 
                 if (captionBox) captionBox.style.display = 'block';
                 updateInstagramPostHeader();
+                // ודא שהתמונה נראית גם בתוך כרטיס האינסטגרם יחד עם הפוסט
+                syncInstagramPostMediaFromCurrent();
                 if (!cleanCaption) setInstagramPostLoading(true);
 
                 var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
