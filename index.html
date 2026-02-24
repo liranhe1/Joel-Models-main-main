@@ -1619,12 +1619,12 @@
             card.style.display = (imgSrc || cap) ? 'block' : 'none';
         }
 
-        function showCreditWarning() {
-            if (globalStatusBar) {
-                globalStatusBar.textContent = CREDITS_PAUSED_MSG;
-                globalStatusBar.className = 'status-bar visible error';
-                globalStatusBar.style.display = 'block';
-            }
+        function showCreditWarning(message) {
+            if (!globalStatusBar) return;
+            const msg = message && String(message).trim() ? String(message).trim() : CREDITS_PAUSED_MSG;
+            globalStatusBar.textContent = msg;
+            globalStatusBar.className = 'status-bar visible error';
+            globalStatusBar.style.display = 'block';
         }
 
         function hideGenerateButtons() {
@@ -1637,15 +1637,32 @@
             if (captionBtn) { captionBtn.style.display = ''; setButtonLocked(captionBtn, true); }
         }
 
-        function stopPollingAndPause(reason) {
-            try { if (typeof localStorage !== 'undefined') localStorage.setItem(CREDITS_PAUSED_KEY, reason || 'pause'); } catch (e) { }
+        function stopPollingAndPause(reason, serverMessage) {
+            const r = (reason || '').toString().toUpperCase();
             if (statusPollingIntervalId) {
                 clearInterval(statusPollingIntervalId);
                 statusPollingIntervalId = null;
             }
             stopPersonaCycle();
-            showCreditWarning();
-            hideGenerateButtons();
+            // Only persist a paused state and hide buttons for hard credit errors (rate limit / payment)
+            if (r === 'RATE_LIMIT' || r === 'PAYMENT' || r === '402' || r === '429') {
+                try {
+                    if (typeof localStorage !== 'undefined') {
+                        localStorage.setItem(CREDITS_PAUSED_KEY, r);
+                    }
+                } catch (e) { }
+                showCreditWarning(serverMessage);
+                hideGenerateButtons();
+            } else {
+                // Soft failure: show error, but keep Generate button available
+                const msg = serverMessage || ('✗ ' + (reason || 'Error from server'));
+                if (globalStatusBar) {
+                    globalStatusBar.textContent = msg;
+                    globalStatusBar.className = 'status-bar visible error';
+                    globalStatusBar.style.display = 'block';
+                }
+                // Do NOT hide or disable generateBtn here
+            }
         }
 
         function hardReset() {
@@ -1701,9 +1718,17 @@
         function init() {
             if (typeof window !== 'undefined') window.lastWebhookUrl = WEBHOOK_STATUS;
             try {
-                if (typeof localStorage !== 'undefined' && localStorage.getItem(CREDITS_PAUSED_KEY)) {
-                    showCreditWarning();
-                    hideGenerateButtons();
+                if (typeof localStorage !== 'undefined') {
+                    var pausedReason = localStorage.getItem(CREDITS_PAUSED_KEY);
+                    var pr = pausedReason && pausedReason.toString().toUpperCase();
+                    // Only auto-lock UI on true credit issues (rate limit / payment)
+                    if (pr === 'RATE_LIMIT' || pr === 'PAYMENT' || pr === '402' || pr === '429') {
+                        showCreditWarning();
+                        hideGenerateButtons();
+                    } else if (pausedReason) {
+                        // Legacy / non-credit reasons: clear the flag so the user can try again
+                        localStorage.removeItem(CREDITS_PAUSED_KEY);
+                    }
                 }
             } catch (e) { }
             renderProducts();
@@ -2034,7 +2059,8 @@
                 if (typeof localStorage !== 'undefined' && localStorage.getItem(CREDITS_PAUSED_KEY)) return;
             } catch (e) { }
             if (pollingStartedAt && (Date.now() - pollingStartedAt > POLL_HARD_LIMIT_MS)) {
-                stopPollingAndPause('timeout');
+                // Soft timeout: stop polling, surface a clear error, but keep Generate enabled
+                stopPollingAndPause('timeout', 'Status polling timed out. Please check the Make.com scenario.');
                 return;
             }
             var statusUrl = (typeof window !== 'undefined' && window.lastWebhookUrl) ? window.lastWebhookUrl : WEBHOOK_STATUS;
@@ -2042,7 +2068,13 @@
             updateLiranPanel(!!statusUrl, null, null, null, null);
             try {
                 var res = await fetch(statusUrl);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
+                if (!res.ok) {
+                    var errBody = '';
+                    try { errBody = await res.text(); } catch (e) { }
+                    console.error('Status webhook HTTP error', { status: res.status, body: errBody });
+                    stopPollingAndPause(String(res.status), 'Status webhook error (' + res.status + '). See console for details.');
+                    return;
+                }
 
                 var rawText = await res.text();
 
@@ -2091,7 +2123,8 @@
                     lastJ5ChangeAt = Date.now();
                 }
                 if (userHasTriggeredGeneration && text && lastJ5ChangeAt && (Date.now() - lastJ5ChangeAt > TIMEOUT_MS)) {
-                    stopPollingAndPause('ERROR');
+                    // J5 stopped changing: treat as soft failure, not a credit lockout
+                    stopPollingAndPause('ERROR', 'No status updates from Make.com. Please verify the scenario and try again.');
                     return;
                 }
                 if (text === '' && !userHasTriggeredGeneration) return;
@@ -2177,7 +2210,7 @@
                         }
                         generationPhase = 'idle';
                     }
-                    try { if (typeof localStorage !== 'undefined') localStorage.setItem(CREDITS_PAUSED_KEY, 'DONE'); } catch (e) { }
+                    // Scenario reached DONE – stop polling, but do NOT mark credits as ended
                     if (statusPollingIntervalId) { clearInterval(statusPollingIntervalId); statusPollingIntervalId = null; }
                     return;
                 }
@@ -2190,7 +2223,7 @@
                 }
             } catch (err) {
                 console.error('Status polling error', err);
-                stopPollingAndPause('ERROR');
+                stopPollingAndPause('ERROR', err && err.message ? err.message : 'Unexpected status polling error. See console for details.');
             }
         }
 
@@ -2323,7 +2356,22 @@
                 }
 
                 if (!res.ok) {
-                    showStatus(statusBar, '✗ Error sending image request', 'error');
+                    // Log full error payload for debugging
+                    console.error('Image webhook HTTP error', {
+                        status: res.status,
+                        body: data !== null ? data : rawText
+                    });
+                    var errMsg = '✗ Image request failed (' + res.status + ')';
+                    if (data && typeof data.error === 'string' && data.error.trim()) {
+                        errMsg = data.error.trim();
+                    } else if (data && typeof data.message === 'string' && data.message.trim()) {
+                        errMsg = data.message.trim();
+                    }
+                    showStatus(statusBar, errMsg, 'error');
+                    // Smart button logic: only lock UI on 402/429
+                    if (res.status === 402 || res.status === 429) {
+                        stopPollingAndPause(String(res.status), errMsg);
+                    }
                 } else {
                     appState = 'copywriter';
                     var rawTrimmed = (rawText || '').trim();
@@ -2445,6 +2493,13 @@
 
                 const rawCaptionText = await response.text();
                 console.log("Caption webhook raw response:", rawCaptionText);
+
+                if (!response.ok) {
+                    console.error("Caption webhook HTTP error", {
+                        status: response.status,
+                        body: rawCaptionText
+                    });
+                }
 
                 let data = null;
                 try {
