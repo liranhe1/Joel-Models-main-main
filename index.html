@@ -1417,7 +1417,10 @@
 
         function extractImageUrlFromRaw(rawStr) {
             if (typeof rawStr !== 'string' || !rawStr.trim()) return '';
-            var m = rawStr.match(/https?:\/\/www\.dropbox\.com\/[^\s"')\]]+/i) || rawStr.match(/https?:\/\/dl\.dropbox[^\s"')\]]+/i);
+            var m =
+                rawStr.match(/https?:\/\/(?:www\.)?dropbox\.com\/[^\s"')\]]+/i) ||
+                rawStr.match(/https?:\/\/dl\.dropbox[^\s"')\]]+/i) ||
+                rawStr.match(/https?:\/\/[^\s"')\]]+/i);
             return m ? m[0].trim() : '';
         }
 
