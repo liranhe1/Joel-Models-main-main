@@ -2360,9 +2360,13 @@
             const creativityLevelVal = document.getElementById('creativityLevel') ? parseInt(document.getElementById('creativityLevel').value, 10) : 5;
             const brand = (selectedProduct && selectedProduct.collection) ? selectedProduct.collection : (collectionBadge ? collectionBadge.textContent : 'JOEL');
 
+            // product_id is required for Make.com database lookup; ensure it is always included
+            const productId = selectedProduct
+                ? String(selectedProduct.id != null ? selectedProduct.id : (selectedProduct.rowNumber != null ? selectedProduct.rowNumber : ''))
+                : '';
             const payload = {
                 command: 'Generate Image',
-                product_id: selectedProduct.id,
+                product_id: productId,
                 scene: formattedScene,
                 aspect_ratio: aspectRatioVal,
                 creativity_level: creativityLevelVal,
@@ -2370,7 +2374,7 @@
             };
 
             try {
-                console.log('Sending command:', payload.command);
+                console.log('Sending command:', payload.command, 'product_id:', payload.product_id);
                 const res = await fetch(WEBHOOK_IMAGE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
